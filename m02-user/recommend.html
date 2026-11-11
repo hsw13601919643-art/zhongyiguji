@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#2f5d50">
+<title>三餐四季药膳推荐</title>
+<link rel="stylesheet" href="../assets/css/base.css">
+<link rel="stylesheet" href="../assets/css/user.css">
+<style>
+  .season-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+  .season-card h3 { font-family: var(--font-serif); font-size: 22px; margin: 0; }
+  .season-card ol { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 8px; }
+  .season-card li { font-size: 14px; }
+  .season-card li b { font-family: var(--font-serif); font-size: 16px; }
+  .sum-line { font-size: 14px; color: var(--c-text-2); }
+  .sum-line b { color: var(--c-text); }
+</style>
+</head>
+<body>
+<main class="u-main">
+  <section class="card">
+    <div class="cond">
+      <label class="field"><span>体质 <a href="constitution.html" style="font-size:12px">（去测评）</a></span><select id="c"></select></label>
+      <label class="field"><span>节气</span><select id="t"></select></label>
+      <div class="field wide"><span class="field-label">调理脏腑</span><div id="o" class="chips sm"></div></div>
+      <div class="two">
+        <label class="field"><span>年龄段</span><select id="a"></select></label>
+        <label class="field"><span>地域</span><select id="r"></select></label>
+      </div>
+    </div>
+  </section>
+
+  <div class="tabs mt-2" role="tablist">
+    <button class="tab" data-mode="meal">三餐推荐</button>
+    <button class="tab" data-mode="season">四季方案</button>
+  </div>
+
+  <div class="row between mb-2">
+    <div class="sum-line" id="sum"></div>
+    <div class="row tight"><button class="btn sm" id="fav-plan">☆ 收藏方案</button><button class="btn sm" id="share">分享方案</button></div>
+  </div>
+  <section id="out"></section>
+  <div class="muted mt-2" style="font-size:12px" id="meta"></div>
+  <div id="disc"></div>
+</main>
+
+<script src="../assets/js/core.js"></script>
+<script src="../assets/js/solar-terms.js"></script>
+<script src="../assets/js/db.js"></script>
+<script src="../assets/lib/qrcode.js"></script>
+<script src="../m01-database/data/dicts.js"></script>
+<script src="../m01-database/data/yaoshi-106.js"></script>
+<script src="../m01-database/data/recipes.js"></script>
+<script src="../m01-database/model.js"></script>
+<script src="../m04-engine/rules.js"></script>
+<script src="../m04-engine/engine.js"></script>
+<script src="user.js"></script>
+<script>
+(function () {
+  'use strict';
+  var U = YS.util, esc = U.esc, D = YS.dict;
+  YS.user.init({ title: '三餐四季药膳推荐', tab: 'meal', page: '推荐' });
+  var p = YS.track.profile();
+  var cur = YS.solar.termOf(new Date());
+
+  function fill(id, list, sel) {
+    var s = document.getElementById(id);
+    s.innerHTML = list.map(function (o) { return '<option value="' + esc(o[0]) + '"' + (o[0] === sel ? ' selected' : '') + '>' + esc(o[1]) + '</option>'; }).join('');
+  }
+  var st = {
+    c: U.qs('c') || p.constitution || '', t: U.qs('t') || cur, o: U.qs('o') || '',
+    a: U.qs('a') || p.ageGroup || '', r: U.qs('r') || p.region || '江南', mode: U.qs('mode') === 'season' ? 'season' : 'meal'
+  };
+  fill('c', [['', '不限（未测评）']].concat(D.names('constitutions').map(function (n) { return [n, n + (n === p.constitution ? '（我的）' : '')]; })), st.c);
+  fill('t', YS.solar.ORDER.map(function (t) { return [t, YS.solar.seasonOf(t) + ' · ' + t + (t === cur ? '（当前）' : '')]; }), st.t);
+  fill('a', [['', '不限']].concat(D.ages.map(function (x) { return [x.name, x.name + '（' + x.range + '）']; })), st.a);
+  fill('r', D.regions.map(function (x) { return [x.name, x.text]; }), st.r);
+  YS.ui.chips(document.getElementById('o'), [{ value: '', text: '不限' }].concat(D.names('organs').map(function (n) { return { value: n, text: n }; })), [st.o], false,
+    function (v) { st.o = v[0] || ''; run(); }, true);
+
+  ['c', 't', 'a', 'r'].forEach(function (k) { document.getElementById(k).addEventListener('change', function () { st[k] = this.value; run(); }); });
+  Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (b) {
+    b.onclick = function () { st.mode = b.getAttribute('data-mode'); run(); };
+  });
+
+  function query() { return U.toQuery({ c: st.c, t: st.t, o: st.o, a: st.a, r: st.r, mode: st.mode === 'season' ? 'season' : '' }); }
+  function input() { return { constitution: st.c, term: st.t, organ: st.o, age: st.a, region: st.r, mode: st.mode === 'season' ? '四季' : '三餐' }; }
+  var res = null;
+
+  function run() {
+    Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (b) { b.classList.toggle('on', b.getAttribute('data-mode') === st.mode); });
+    history.replaceState(null, '', '?' + query());
+    var inp = input();
+    var parts = [st.c || '未选体质', st.t + '（' + YS.solar.seasonOf(st.t) + '）'];
+    if (st.o) parts.push('调理' + st.o);
+    if (st.a) parts.push(st.a);
+    document.getElementById('sum').innerHTML = parts.map(function (x) { return '<b>' + esc(x) + '</b>'; }).join(' · ');
+    if (st.mode === 'season') renderSeason(inp); else renderMeals(inp);
+    updateFavBtn();
+  }
+
+  function renderMeals(inp) {
+    res = YS.engine.recommend(inp);
+    if (YS.consent.agreed()) YS.track.recommend(inp, res);
+    var out = document.getElementById('out');
+    out.innerHTML = '<div class="meal-grid">' + ['早', '午', '晚'].map(function (m) { return YS.user.mealCard(m, res.meals[m]); }).join('') + '</div>';
+    document.getElementById('meta').innerHTML = '响应时间 ' + res.elapsedMs.toFixed(1) + ' 毫秒 · 候选 ' + res.candidates + ' 首 · 已按药食同源目录过滤 ' + res.filtered.length + ' 首' +
+      ' · 触发规则：' + esc(res.appliedRules.map(function (r) { return r.id + ' ' + r.name; }).join('；') || '无');
+  }
+
+  function renderSeason(inp) {
+    var sres = YS.engine.seasonal(inp);
+    if (YS.consent.agreed()) YS.track.recommend(inp, sres.seasons[YS.solar.seasonOf(st.t)] || sres.seasons['春']);
+    var icons = { 春: '春', 夏: '夏', 秋: '秋', 冬: '冬' };
+    document.getElementById('out').innerHTML = '<div class="season-grid">' + D.seasons.map(function (s) {
+      var r = sres.seasons[s];
+      return '<div class="card season-card"><div class="row between"><h3>' + icons[s] + '</h3><span class="muted" style="font-size:12px">以' + esc(r.ctx.term) + '为代表</span></div><ol>' +
+        ['早', '午', '晚'].map(function (m) {
+          var x = r.meals[m];
+          return '<li><span class="muted">' + D.mealNames[m] + '</span><br>' + (x.pick ? '<a href="detail.html?id=' + encodeURIComponent(x.pick.recipe.id) + '"><b>' + esc(x.pick.recipe.name) + '</b></a><div class="muted" style="font-size:12px">' + esc(x.pick.recipe.efficacy) + '</div>' : '<span class="muted">暂无</span>') + '</li>';
+        }).join('') + '</ol><button class="btn sm mt-1" data-term="' + esc(r.ctx.term) + '">查看该季三餐详情</button></div>';
+    }).join('') + '</div>';
+    document.getElementById('meta').textContent = '四季方案响应时间 ' + sres.elapsedMs.toFixed(1) + ' 毫秒（共 4 次推荐计算）';
+  }
+
+  document.getElementById('out').addEventListener('click', function (e) {
+    var t = e.target.closest('[data-term]');
+    if (t) { st.t = t.getAttribute('data-term'); document.getElementById('t').value = st.t; st.mode = 'meal'; run(); window.scrollTo(0, 0); return; }
+    var sw = e.target.closest('[data-swap]');
+    if (sw && res) {
+      var q = sw.getAttribute('data-swap').split('|'), m = q[0], i = Number(q[1]);
+      var x = res.meals[m], alt = x.alternatives[i];
+      x.alternatives[i] = x.pick; x.pick = alt;
+      var card = document.querySelector('.meal-card[data-meal="' + m + '"]');
+      var tmp = document.createElement('div'); tmp.innerHTML = YS.user.mealCard(m, x);
+      card.replaceWith(tmp.firstChild);
+    }
+  });
+  YS.user.bindFav(document.getElementById('out'));
+
+  function planKey() { return query(); }
+  function updateFavBtn() {
+    var on = YS.fav.has('plan', planKey());
+    var b = document.getElementById('fav-plan');
+    b.textContent = on ? '★ 已收藏方案' : '☆ 收藏方案';
+    b.classList.toggle('accent', on);
+  }
+  document.getElementById('fav-plan').onclick = function () {
+    YS.user.requireConsent(function () {
+      var title = (st.mode === 'season' ? '四季方案' : '三餐方案') + '：' + [st.c || '未选体质', st.t, st.o ? '调理' + st.o : ''].filter(Boolean).join(' · ');
+      var picks = res && st.mode === 'meal' ? ['早', '午', '晚'].map(function (m) { var x = res.meals[m]; return x.pick ? D.mealNames[m] + '：' + x.pick.recipe.name : ''; }).filter(Boolean) : [];
+      var on = YS.fav.toggle('plan', planKey(), title, { query: planKey(), picks: picks });
+      YS.ui.toast(on ? '方案已收藏' : '已取消收藏', on ? 'ok' : '');
+      updateFavBtn();
+    });
+  };
+  document.getElementById('share').onclick = function () {
+    var url = location.href.split('?')[0] + '?' + query();
+    YS.ui.share('我的' + st.t + '药膳方案', url, '按“' + (st.c || '节气') + '”生成的三餐四季药膳方案');
+  };
+  document.getElementById('disc').innerHTML = YS.user.disclaimer();
+  run();
+})();
+</script>
+</body>
+</html>

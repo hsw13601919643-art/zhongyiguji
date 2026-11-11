@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>项目文档</title>
+<link rel="stylesheet" href="css/base.css">
+<style>
+  .doc-wrap { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 24px; align-items: start; }
+  @media (max-width: 900px) { .doc-wrap { grid-template-columns: minmax(0, 1fr); } .doc-nav { order: 2; } }
+  .doc-nav { position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow: auto; }
+  .doc-nav h4 { font-size: 13px; color: var(--c-text-3); margin: 12px 0 4px; }
+  .doc-nav a { display: block; padding: 5px 8px; border-radius: 6px; font-size: 14px; color: var(--c-text-2); }
+  .doc-nav a.on { background: var(--c-primary-050); color: var(--c-primary); font-weight: 600; }
+  .doc { background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--radius); padding: 28px 36px 40px; line-height: 1.8; }
+  @media (max-width: 600px) { .doc { padding: 18px 16px 28px; } }
+  .doc h1 { font-family: var(--font-serif); font-size: 26px; padding-bottom: 10px; border-bottom: 2px solid var(--c-primary); }
+  .doc h2 { font-size: 20px; margin-top: 28px; color: var(--c-primary); }
+  .doc h3 { font-size: 17px; margin-top: 20px; }
+  .doc blockquote { margin: 0 0 14px; padding: 8px 16px; background: var(--c-surface-2); border-left: 3px solid var(--c-accent); color: var(--c-text-2); font-size: 14px; }
+  .doc blockquote p { margin: 4px 0; }
+  .doc code { font-family: Consolas, "SFMono-Regular", monospace; font-size: 13px; background: var(--c-surface-2); padding: 1px 5px; border-radius: 4px; border: 1px solid var(--c-border); }
+  .doc pre { background: #1f2622; color: #dfe9e4; padding: 14px; border-radius: 8px; overflow: auto; font-size: 13px; line-height: 1.6; }
+  .doc pre code { background: none; border: 0; padding: 0; color: inherit; }
+  .doc .table-wrap { margin: 10px 0 16px; }
+  .doc ul, .doc ol { padding-left: 22px; }
+  .doc li.task { list-style: none; margin-left: -18px; }
+  .doc hr { border: 0; border-top: 1px solid var(--c-border); margin: 24px 0; }
+  @media print {
+    .doc-nav, .topbar, .no-print { display: none !important; }
+    .doc-wrap { display: block; }
+    .doc { border: 0; padding: 0; }
+    .page { padding: 0; }
+    .doc .table-wrap { overflow: visible; border: 0; }
+    .doc table { font-size: 11pt; }
+    .doc h2 { break-after: avoid; }
+    .doc tr { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<main class="page">
+  <div class="container">
+    <div class="row between mb-2 no-print">
+      <a href="javascript:history.back()" class="btn sm">‹ 返回</a>
+      <div class="row tight"><button class="btn sm" id="dl">下载 Markdown</button><button class="btn sm primary" onclick="window.print()">打印 / 另存为 PDF</button></div>
+    </div>
+    <div class="doc-wrap">
+      <nav class="card doc-nav" id="nav"></nav>
+      <article class="doc" id="doc"></article>
+    </div>
+  </div>
+</main>
+<script src="js/core.js"></script>
+<script src="js/docs-bundle.js"></script>
+<script src="js/markdown.js"></script>
+<script>
+(function () {
+  'use strict';
+  var U = YS.util, esc = U.esc;
+  YS.topbar({ title: '项目文档', sub: '经典药膳方数据库及推荐系统' });
+  var docs = YS.docs || {};
+  var f = U.qs('f') || 'README.md';
+  var GROUPS = [['README.md', '项目说明'], ['m01-database/', 'M01 数据库建设'], ['m04-engine/', 'M04 推荐算法'], ['m05-deploy/', 'M05 集成与部署'], ['m06-security/', 'M06 数据安全'],
+    ['m07-promotion/', 'M07 推广与应用'], ['m08-ip/', 'M08 知识产权与保密'], ['m09-management/', 'M09 项目过程管理']];
+  var keys = Object.keys(docs).sort();
+  document.getElementById('nav').innerHTML = GROUPS.map(function (g) {
+    var list = keys.filter(function (k) { return k.indexOf(g[0]) === 0; });
+    if (!list.length) return '';
+    return '<h4>' + esc(g[1]) + '</h4>' + list.map(function (k) {
+      var title = k === 'README.md' ? '项目说明（README）' : k.split('/').pop().replace(/\.md$/, '');
+      return '<a href="?f=' + encodeURIComponent(k) + '"' + (k === f ? ' class="on"' : '') + '>' + esc(title) + '</a>';
+    }).join('');
+  }).join('');
+
+  function show(text) {
+    var base = f.indexOf('/') >= 0 ? f.slice(0, f.lastIndexOf('/')) : '';
+    document.getElementById('doc').innerHTML = YS.md.render(text, { base: base, docLink: function (p) { return '?f=' + encodeURIComponent(p); } });
+    var h1 = document.querySelector('.doc h1');
+    document.title = (h1 ? h1.textContent : f) + ' · 项目文档';
+    document.getElementById('dl').onclick = function () { U.download(f.split('/').pop(), text, 'text/markdown'); };
+  }
+  if (docs[f] !== undefined) show(docs[f]);
+  else if (/^https?:/.test(location.protocol) && /^[\w\-\/一-龥（）().]+\.md$/.test(f) && f.indexOf('..') < 0) {
+    fetch(YS.url(f)).then(function (r) { if (!r.ok) throw new Error(r.status); return r.text(); }).then(show, function () { notFound(); });
+  } else notFound();
+  function notFound() { document.getElementById('doc').innerHTML = '<div class="empty">未找到文档：' + esc(f) + '<br>如刚新增或修改了文档，请运行 <code>python3 tools/build_docs.py</code> 更新文档包。</div>'; }
+})();
+</script>
+</body>
+</html>

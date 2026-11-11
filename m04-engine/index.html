@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>推荐算法测试台 · M04</title>
+<link rel="stylesheet" href="../assets/css/base.css">
+<style>
+  .pass { color: var(--c-success); font-weight: 600; }
+  .fail { color: var(--c-danger); font-weight: 600; }
+  .dbg-form { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)) auto; gap: 10px; align-items: end; }
+  @media (max-width: 900px) { .dbg-form { grid-template-columns: 1fr 1fr; } }
+  .score { font-variant-numeric: tabular-nums; font-weight: 600; }
+  .why { font-size: 13px; color: var(--c-text-2); }
+  td.small, .small { font-size: 13px; }
+</style>
+</head>
+<body>
+<main class="page">
+  <div class="container">
+    <div class="page-head">
+      <h1>推荐算法测试台</h1>
+      <p>M04 · “规则引擎 ＋ 标签匹配”。覆盖测试对应验收表《推荐覆盖测试》43 个用例，可导出结果填入验收表。<a href="../assets/doc-viewer.html?f=m04-engine/算法说明.md">查看算法说明 →</a></p>
+    </div>
+
+    <div class="tabs">
+      <button class="tab on" data-tab="cover">覆盖测试（43 个用例）</button>
+      <button class="tab" data-tab="debug">单次调试</button>
+      <button class="tab" data-tab="rules">当前规则</button>
+    </div>
+
+    <section data-pane="cover">
+      <div class="row between mb-2">
+        <div class="row tight"><button class="btn primary" id="run">运行全部用例</button><button class="btn" id="export" disabled>导出结果（CSV）</button></div>
+        <span class="muted small">使用当前浏览器中的药膳方与规则数据；R4 的测试方仅在内存中，不写入数据库。</span>
+      </div>
+      <div class="grid grid-4 mb-2" id="sum"></div>
+      <div class="table-wrap"><table class="table">
+        <thead><tr><th>编号</th><th>测试组</th><th>测试项</th><th>测试条件</th><th>预期结果</th><th>实际结果</th><th class="num">响应（秒）</th><th>结果</th></tr></thead>
+        <tbody id="body"><tr><td colspan="8" class="empty">点击“运行全部用例”开始测试</td></tr></tbody>
+      </table></div>
+    </section>
+
+    <section data-pane="debug" class="hidden">
+      <div class="card mb-2">
+        <div class="dbg-form">
+          <label class="field"><span>体质</span><select id="d-con"><option value="">不限</option></select></label>
+          <label class="field"><span>节气</span><select id="d-term"></select></label>
+          <label class="field"><span>调理脏腑</span><select id="d-organ"><option value="">不限</option></select></label>
+          <label class="field"><span>年龄段</span><select id="d-age"><option value="">不限</option></select></label>
+          <label class="field"><span>地域</span><select id="d-region"><option value="">不限</option></select></label>
+          <button class="btn primary" id="d-run">计算</button>
+        </div>
+      </div>
+      <div id="d-out"></div>
+    </section>
+
+    <section data-pane="rules" class="hidden">
+      <div class="row between mb-2"><span class="muted">规则在管理端“推荐规则配置”中维护（需管理员权限）。</span><a class="btn" href="../m03-admin/rules.html">去配置规则</a></div>
+      <div class="table-wrap"><table class="table"><thead><tr><th>编号</th><th>分组</th><th>名称</th><th>触发条件</th><th>偏好 / 规避</th><th class="num">权重</th><th>状态</th></tr></thead><tbody id="r-body"></tbody></table></div>
+    </section>
+  </div>
+</main>
+
+<script src="../assets/js/core.js"></script>
+<script src="../assets/js/solar-terms.js"></script>
+<script src="../assets/js/db.js"></script>
+<script src="../m01-database/data/dicts.js"></script>
+<script src="../m01-database/data/yaoshi-106.js"></script>
+<script src="../m01-database/data/recipes.js"></script>
+<script src="../m01-database/model.js"></script>
+<script src="rules.js"></script>
+<script src="engine.js"></script>
+<script src="../m02-user/constitution-data.js"></script>
+<script src="test-cases.js"></script>
+<script>
+(function () {
+  'use strict';
+  var U = YS.util, esc = U.esc, D = YS.dict;
+  YS.topbar({ title: 'M04 推荐算法', sub: '规则引擎＋标签匹配' });
+
+  // ---------- 标签页 ----------
+  var tabs = document.querySelectorAll('.tab');
+  function show(n) {
+    Array.prototype.forEach.call(tabs, function (t) { t.classList.toggle('on', t.getAttribute('data-tab') === n); });
+    Array.prototype.forEach.call(document.querySelectorAll('[data-pane]'), function (p) { p.classList.toggle('hidden', p.getAttribute('data-pane') !== n); });
+  }
+  Array.prototype.forEach.call(tabs, function (t) { t.onclick = function () { show(t.getAttribute('data-tab')); }; });
+
+  // ---------- 覆盖测试 ----------
+  var last = null;
+  function sec(ms) { return (ms / 1000).toFixed(4); }
+  document.getElementById('run').onclick = function () {
+    var res = YS.engineTests.runAll(new Date());
+    last = res;
+    var pass = res.filter(function (r) { return r.pass; }).length;
+    var max = Math.max.apply(null, res.map(function (r) { return r.ms; }));
+    var avg = res.reduce(function (s, r) { return s + r.ms; }, 0) / res.length;
+    document.getElementById('sum').innerHTML = [
+      ['用例总数', res.length, ''], ['通过', pass, pass === res.length ? '全部通过' : (res.length - pass) + ' 个未通过'],
+      ['平均响应', sec(avg), '秒'], ['最大响应', sec(max), max < 3000 ? '秒 · 达标（< 3 秒）' : '秒 · 超时']
+    ].map(function (k) { return '<div class="kpi"><div class="label">' + k[0] + '</div><div class="value">' + k[1] + '</div><div class="sub">' + k[2] + '</div></div>'; }).join('');
+    document.getElementById('body').innerHTML = res.map(function (r) {
+      return '<tr><td class="nowrap"><b>' + r.id + '</b></td><td class="nowrap small">' + esc(r.group) + '</td><td class="nowrap">' + esc(r.item) + '</td>' +
+        '<td class="small">' + esc(r.input) + '</td><td class="small">' + esc(r.expect) + '</td><td class="small">' + esc(r.actual) + '</td>' +
+        '<td class="num">' + sec(r.ms) + '</td><td class="' + (r.pass ? 'pass' : 'fail') + '">' + (r.pass ? '通过' : '不通过') + '</td></tr>';
+    }).join('');
+    document.getElementById('export').disabled = false;
+    YS.ui.toast('测试完成：' + pass + '/' + res.length + ' 通过', pass === res.length ? 'ok' : 'err');
+  };
+  document.getElementById('export').onclick = function () {
+    if (!last) return;
+    var rows = [['用例编号', '测试组', '测试项', '测试条件（输入）', '预期结果', '实际推荐结果', '响应时间（秒）', '测试结果', '测试日期']];
+    last.forEach(function (r) { rows.push([r.id, r.group, r.item, r.input, r.expect, r.actual, sec(r.ms), r.pass ? '通过' : '不通过', U.fmtDate()]); });
+    U.download('推荐覆盖测试结果_' + U.fmtDate() + '.csv', U.csvStringify(rows), 'text/csv');
+  };
+
+  // ---------- 单次调试 ----------
+  function opts(id, vals, sel) { var s = document.getElementById(id); vals.forEach(function (v) { var o = document.createElement('option'); o.value = v.value || v; o.textContent = v.text || v; if (o.value === sel) o.selected = true; s.appendChild(o); }); }
+  var cur = YS.solar.termOf(new Date());
+  opts('d-con', D.names('constitutions'));
+  opts('d-term', YS.solar.ORDER.map(function (t) { return { value: t, text: t + (t === cur ? '（当前）' : '') }; }), cur);
+  opts('d-organ', D.names('organs'));
+  opts('d-age', D.names('ages'));
+  opts('d-region', D.regions.map(function (r) { return { value: r.name, text: r.text }; }));
+  document.getElementById('d-run').onclick = function () {
+    var input = {
+      constitution: document.getElementById('d-con').value, term: document.getElementById('d-term').value,
+      organ: document.getElementById('d-organ').value, age: document.getElementById('d-age').value, region: document.getElementById('d-region').value
+    };
+    var res = YS.engine.recommend(input);
+    var picksHtml = ['早', '午', '晚'].map(function (m) {
+      var x = res.meals[m];
+      return '<div class="card"><div class="muted small">' + D.mealNames[m] + '</div>' + (x.pick ? '<div class="serif" style="font-size:18px;font-weight:700">' + esc(x.pick.recipe.name) + '</div><div class="why">' + esc(x.pick.reasons.join('；')) + '</div><div class="small mt-1">备选：' + esc(x.alternatives.map(function (a) { return a.recipe.name; }).join('、') || '无') + '</div>' : '<div class="muted">无可推荐方剂</div>') + '</div>';
+    }).join('');
+    document.getElementById('d-out').innerHTML =
+      '<div class="notice info mb-2">季节：' + esc(res.ctx.season) + (res.ctx.wxSeason === '长夏' ? '（长夏）' : '') + '；触发规则 ' + res.appliedRules.length + ' 条：' +
+      esc(res.appliedRules.map(function (r) { return r.id; }).join('、') || '无') + '；候选 ' + res.candidates + ' 首；已过滤 ' + res.filtered.length + ' 首；耗时 ' + res.elapsedMs.toFixed(2) + ' 毫秒</div>' +
+      '<div class="grid grid-3 mb-2">' + picksHtml + '</div>' +
+      '<h3>全部候选得分</h3><div class="table-wrap"><table class="table"><thead><tr><th>#</th><th>方剂</th><th>餐次</th><th class="num">得分</th><th>匹配说明</th><th>规则加减分</th></tr></thead><tbody>' +
+      res.ranking.map(function (x, i) {
+        return '<tr><td>' + (i + 1) + '</td><td class="nowrap"><b>' + esc(x.recipe.name) + '</b></td><td class="nowrap">' + esc(x.recipe.meals.join('')) + '</td><td class="num score">' + x.score + '</td><td class="why">' + esc(x.reasons.join('；')) + '</td><td class="why">' +
+          esc(x.rules.map(function (r) { return r.id + (r.weight > 0 ? '+' : '') + r.weight + '（' + r.hits.join('/') + '）'; }).join('；')) + '</td></tr>';
+      }).join('') + '</tbody></table></div>' +
+      (res.filtered.length ? '<h3 class="mt-2">已过滤（不合规）</h3><ul>' + res.filtered.map(function (f) { return '<li>' + esc(f.recipe.name) + '：' + esc(f.reason) + '</li>'; }).join('') + '</ul>' : '');
+  };
+
+  // ---------- 当前规则 ----------
+  function spec(s) {
+    if (!s) return '';
+    var parts = [];
+    [['tags', ''], ['tastes', '味'], ['colors', '色'], ['natures', '性'], ['categories', ''], ['ingredients', ''], ['seasons', ''], ['terms', ''], ['organs', ''], ['constitutions', ''], ['ages', ''], ['regions', '']].forEach(function (k) {
+      if (s[k[0]] && s[k[0]].length) parts.push(s[k[0]].join('/') + k[1]);
+    });
+    return parts.join('；');
+  }
+  document.getElementById('r-body').innerHTML = YS.db.list('rules').map(function (r) {
+    return '<tr><td><b>' + esc(r.id) + '</b></td><td>' + esc(r.group) + '</td><td>' + esc(r.name) + '</td><td class="small">' + esc(spec(r.when) || '始终') + '</td><td class="small">' +
+      (spec(r.prefer) ? '宜：' + esc(spec(r.prefer)) : '') + (spec(r.avoid) ? '<br>忌：' + esc(spec(r.avoid)) : '') + '</td><td class="num">' + r.weight + '</td><td>' +
+      (r.enabled === false ? '<span class="badge">停用</span>' : '<span class="badge green">启用</span>') + '</td></tr>';
+  }).join('');
+})();
+</script>
+</body>
+</html>

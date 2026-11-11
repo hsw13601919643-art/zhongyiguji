@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>操作日志</title>
+<link rel="stylesheet" href="../assets/css/base.css">
+<link rel="stylesheet" href="../assets/css/admin.css">
+</head>
+<body>
+<div id="adm-content" class="hidden">
+  <div class="toolbar">
+    <select id="fr"><option value="7">近 7 天</option><option value="30" selected>近 30 天</option><option value="0">全部</option></select>
+    <select id="fu"><option value="">全部操作人</option></select>
+    <select id="fres"><option value="">全部结果</option><option>成功</option><option>失败</option><option>拒绝</option></select>
+    <input type="search" id="fq" placeholder="搜索操作、对象、内容…">
+    <span class="spacer"></span>
+    <button class="btn" id="exp">导出 CSV</button>
+  </div>
+  <div class="grid grid-4 mb-2" id="kpi"></div>
+  <div class="table-wrap"><table class="table"><thead><tr><th>时间</th><th>操作人</th><th>角色</th><th>操作</th><th>对象</th><th>内容</th><th>结果</th></tr></thead><tbody id="tb"></tbody></table></div>
+  <div id="pager"></div>
+  <p class="muted mt-2" style="font-size:13px">记录登录、退出、新增、编辑、审核、发布、下架、删除、导入导出、规则与设置修改、备份恢复及越权访问。日志只增不改，保留最近 3000 条（二期存入服务器数据库）。</p>
+</div>
+
+<script src="../assets/js/core.js"></script>
+<script src="../assets/js/solar-terms.js"></script>
+<script src="../assets/js/db.js"></script>
+<script src="../m01-database/data/dicts.js"></script>
+<script src="../m01-database/data/yaoshi-106.js"></script>
+<script src="../m01-database/data/recipes.js"></script>
+<script src="../m01-database/model.js"></script>
+<script src="audit.js"></script>
+<script src="auth.js"></script>
+<script src="../m03-admin/admin.js"></script>
+<script>
+(function () {
+  'use strict';
+  if (!YS.admin.init({ key: 'logs', title: '操作日志', perm: 'logs.view' })) return;
+  var U = YS.util, esc = U.esc;
+  var all = YS.audit.list().slice().reverse();
+  U.uniq(all.map(function (l) { return l.username; })).forEach(function (u) { var o = document.createElement('option'); o.value = o.textContent = u; document.getElementById('fu').appendChild(o); });
+  var page = 1, SIZE = 25;
+  function rows() {
+    var since = YS.admin.rangeStart(Number(document.getElementById('fr').value));
+    var fu = document.getElementById('fu').value, fres = document.getElementById('fres').value, q = document.getElementById('fq').value.trim();
+    return all.filter(function (l) {
+      return l.t >= since && (!fu || l.username === fu) && (!fres || l.result === fres) && (!q || [l.action, l.target, l.detail].join(' ').indexOf(q) >= 0);
+    });
+  }
+  function render() {
+    var r = rows();
+    var bad = r.filter(function (l) { return l.result !== '成功'; }).length;
+    document.getElementById('kpi').innerHTML = [['日志条数', r.length], ['操作人', U.uniq(r.map(function (l) { return l.username; })).length], ['失败', r.filter(function (l) { return l.result === '失败'; }).length], ['越权拒绝', r.filter(function (l) { return l.result === '拒绝'; }).length]]
+      .map(function (k) { return '<div class="kpi"><div class="label">' + k[0] + '</div><div class="value">' + k[1] + '</div></div>'; }).join('');
+    var slice = r.slice((page - 1) * SIZE, page * SIZE);
+    document.getElementById('tb').innerHTML = slice.map(function (l) {
+      var cls = l.result === '成功' ? 'green' : 'red';
+      return '<tr' + (l.result === '拒绝' ? ' style="background:var(--c-danger-050)"' : '') + '><td class="nowrap">' + U.fmtTime(l.t) + '</td><td class="nowrap">' + esc(l.name || l.username) + '<div class="muted" style="font-size:12px">' + esc(l.username) + '</div></td>' +
+        '<td class="nowrap">' + esc(l.role ? YS.auth.roleName(l.role) : '—') + '</td><td class="nowrap">' + esc(l.action) + '</td><td>' + esc(l.target) + '</td><td style="font-size:13px">' + esc(l.detail) + '</td>' +
+        '<td><span class="badge ' + cls + '">' + esc(l.result) + '</span></td></tr>';
+    }).join('') || '<tr><td colspan="7" class="empty">暂无日志</td></tr>';
+    YS.admin.pager(document.getElementById('pager'), r.length, page, SIZE, function (p) { page = p; render(); });
+    void bad;
+  }
+  ['fr', 'fu', 'fres'].forEach(function (id) { document.getElementById(id).onchange = function () { page = 1; render(); }; });
+  document.getElementById('fq').oninput = U.debounce(function () { page = 1; render(); }, 150);
+  document.getElementById('exp').onclick = function () {
+    var out = [['时间', '用户名', '姓名', '角色', '操作', '对象', '内容', '结果']];
+    rows().forEach(function (l) { out.push([U.fmtTime(l.t), l.username, l.name, l.role ? YS.auth.roleName(l.role) : '', l.action, l.target, l.detail, l.result]); });
+    U.download('操作日志_' + U.fmtDate() + '.csv', U.csvStringify(out), 'text/csv');
+    YS.audit.log('导出数据', '操作日志', '导出 ' + (out.length - 1) + ' 条');
+  };
+  render();
+})();
+</script>
+</body>
+</html>

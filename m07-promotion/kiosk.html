@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>三餐四季经典药膳 · 触摸屏</title>
+<link rel="stylesheet" href="../assets/css/base.css">
+<style>
+  html, body { height: 100%; }
+  body { font-size: 20px; background: var(--c-bg); user-select: none; -webkit-user-select: none; overflow-x: hidden; }
+  .k-head { background: linear-gradient(135deg, #2f5d50, #1f3d34); color: #fff; padding: 22px 32px; display: flex; align-items: center; gap: 20px; }
+  .k-head h1 { color: #fff; font-family: var(--font-serif); font-size: 38px; letter-spacing: 4px; margin: 0; }
+  .k-head .sub { opacity: .8; font-size: 18px; }
+  .k-head .term { margin-left: auto; text-align: right; }
+  .k-head .term b { font-family: var(--font-serif); font-size: 44px; color: #f3d9b5; letter-spacing: 6px; display: block; line-height: 1.1; }
+  .k-main { padding: 26px 32px 40px; max-width: 1400px; margin: 0 auto; }
+  .k-title { font-size: 28px; font-weight: 700; margin: 0 0 18px; }
+  .k-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+  @media (max-width: 760px) { .k-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .k-head { flex-wrap: wrap; padding: 16px; } .k-head h1 { font-size: 28px; } .k-main { padding: 16px; } }
+  .k-btn { min-height: 120px; padding: 18px; border: 2px solid var(--c-border); border-radius: 18px; background: var(--c-surface); font: inherit; text-align: left; cursor: pointer; display: flex; flex-direction: column; gap: 6px; box-shadow: var(--shadow-1); }
+  .k-btn:active { transform: scale(.98); border-color: var(--c-primary); background: var(--c-primary-050); }
+  .k-btn b { font-family: var(--font-serif); font-size: 30px; color: var(--c-primary); }
+  .k-btn span { font-size: 17px; color: var(--c-text-2); line-height: 1.5; }
+  .k-wide { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
+  .k-alt { min-height: 96px; border-radius: 18px; border: 0; font: inherit; font-size: 24px; font-weight: 700; cursor: pointer; color: #fff; background: var(--c-accent); }
+  .k-alt.g { background: var(--c-primary); }
+  .k-meals { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+  @media (max-width: 960px) { .k-meals { grid-template-columns: minmax(0, 1fr); } }
+  .k-meal { background: var(--c-surface); border-radius: 18px; padding: 22px; border: 1px solid var(--c-border); box-shadow: var(--shadow-1); display: flex; flex-direction: column; gap: 10px; }
+  .k-meal .ml { color: var(--c-accent); font-weight: 700; font-size: 20px; }
+  .k-meal .nm { font-family: var(--font-serif); font-size: 34px; font-weight: 700; }
+  .k-meal .ef { font-size: 20px; }
+  .k-meal .mt { font-size: 17px; color: var(--c-text-2); line-height: 1.6; }
+  .k-meal .ca { font-size: 16px; color: var(--c-danger); }
+  .k-meal .comp { font-size: 16px; padding: 4px 10px; }
+  .k-bar { display: flex; gap: 16px; align-items: center; margin-top: 22px; flex-wrap: wrap; }
+  .k-back { min-height: 72px; padding: 0 36px; border-radius: 16px; border: 2px solid var(--c-primary); background: #fff; color: var(--c-primary); font: inherit; font-size: 22px; font-weight: 700; cursor: pointer; }
+  .k-qr { display: flex; gap: 14px; align-items: center; margin-left: auto; background: #fff; border-radius: 14px; padding: 10px 16px; border: 1px solid var(--c-border); }
+  .k-qr svg { width: 120px; height: 120px; display: block; }
+  .k-idle { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: rgba(30,30,28,.85); color: #fff; padding: 12px 22px; border-radius: 999px; font-size: 18px; }
+  .k-foot { text-align: center; color: var(--c-text-3); font-size: 15px; margin-top: 26px; }
+</style>
+</head>
+<body>
+<header class="k-head">
+  <div><h1>三餐四季 · 经典药膳</h1><div class="sub">依据中医经典古籍 · 国家药食同源目录</div></div>
+  <div class="term"><span id="k-date"></span><b id="k-term"></b></div>
+</header>
+<main class="k-main" id="app"></main>
+<div class="k-idle hidden" id="idle"></div>
+
+<script src="../assets/js/core.js"></script>
+<script src="../assets/js/solar-terms.js"></script>
+<script src="../assets/js/db.js"></script>
+<script src="../assets/lib/qrcode.js"></script>
+<script src="../m01-database/data/dicts.js"></script>
+<script src="../m01-database/data/yaoshi-106.js"></script>
+<script src="../m01-database/data/recipes.js"></script>
+<script src="../m01-database/model.js"></script>
+<script src="../m04-engine/rules.js"></script>
+<script src="../m04-engine/engine.js"></script>
+<script>
+(function () {
+  'use strict';
+  var U = YS.util, esc = U.esc, D = YS.dict;
+  var IDLE = 90, WARN = 10;
+  var term = YS.solar.termOf(new Date());
+  document.getElementById('k-date').textContent = U.cnDate() + ' ' + U.weekday() + ' · 当前节气';
+  document.getElementById('k-term').textContent = term;
+  // 公共终端：不保存个人信息；仅匿名统计访问与推荐次数
+  if (!U.qs('src')) YS.session.set('src', '触摸屏终端');
+  YS.track.visit('触摸屏');
+  var app = document.getElementById('app');
+
+  function home() {
+    app.innerHTML = '<h2 class="k-title">请点选您的体质，查看今日三餐药膳</h2><div class="k-grid">' + D.constitutions.map(function (c) {
+      return '<button class="k-btn" data-c="' + c.name + '"><b>' + c.name + '</b><span>' + esc(c.feature) + '</span></button>';
+    }).join('') + '</div>' +
+      '<div class="k-wide"><button class="k-alt g" data-c="">不清楚体质 · 按节气推荐</button><button class="k-alt" id="k-season">查看四季药膳方案</button></div>' +
+      '<p class="k-foot">推荐内容仅供日常饮食参考，不能替代医疗诊治。孕妇、儿童、慢性病患者请遵医嘱。</p>';
+    document.getElementById('k-season').onclick = function () { season(); };
+  }
+
+  function shareQr(params) {
+    if (!/^https?:/.test(location.protocol)) return '';
+    var url = YS.root + 'm02-user/recommend.html?' + U.toQuery(params) + '&src=' + encodeURIComponent(YS.track.src() || '触摸屏终端');
+    return '<div class="k-qr">' + YS.ui.qrSvg(url, 4) + '<div><b>扫码带走方案</b><br><span class="muted" style="font-size:16px">用手机微信扫一扫</span></div></div>';
+  }
+
+  function meals(con) {
+    var res = YS.engine.recommend({ constitution: con, term: term, region: '江南' });
+    YS.track.recommend({ constitution: con, term: term, region: '江南', mode: '三餐' }, res);
+    app.innerHTML = '<h2 class="k-title">' + esc((con || '按节气') + ' · ' + term + ' · 今日三餐') + '</h2><div class="k-meals">' + ['早', '午', '晚'].map(function (m) {
+      var x = res.meals[m];
+      if (!x.pick) return '<div class="k-meal"><span class="ml">' + D.mealNames[m] + '</span><span class="muted">暂无</span></div>';
+      var r = x.pick.recipe;
+      return '<div class="k-meal"><span class="ml">' + D.mealNames[m] + '</span><div class="nm">' + esc(r.name) + '</div><div class="muted" style="font-size:16px">' + esc(YS.model.sourceText(r)) + '</div>' +
+        '<div class="ef"><b>功效：</b>' + esc(r.efficacy) + '</div>' + YS.model.compHtml(r) +
+        '<div class="mt"><b>做法：</b>' + esc(r.method) + '</div><div class="ca">注意：' + esc(r.cautions) + '</div></div>';
+    }).join('') + '</div>' +
+      '<div class="k-bar"><button class="k-back" id="k-home">‹ 返回首页</button>' + shareQr({ c: con, t: term }) + '</div>';
+    document.getElementById('k-home').onclick = home;
+    window.scrollTo(0, 0);
+  }
+
+  function season() {
+    var s = YS.engine.seasonal({ region: '江南' });
+    app.innerHTML = '<h2 class="k-title">四季药膳方案</h2><div class="k-meals" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr))">' + D.seasons.map(function (k) {
+      var r = s.seasons[k];
+      return '<div class="k-meal"><div class="nm">' + k + '</div>' + ['早', '午', '晚'].map(function (m) {
+        var x = r.meals[m]; return '<div class="ef"><span class="ml">' + D.mealNames[m] + '</span> ' + (x.pick ? '<b>' + esc(x.pick.recipe.name) + '</b><div class="mt">' + esc(x.pick.recipe.efficacy) + '</div>' : '—') + '</div>';
+      }).join('') + '</div>';
+    }).join('') + '</div><div class="k-bar"><button class="k-back" id="k-home">‹ 返回首页</button></div>';
+    document.getElementById('k-home').onclick = home;
+    window.scrollTo(0, 0);
+  }
+
+  app.addEventListener('click', function (e) { var b = e.target.closest('[data-c]'); if (b) meals(b.getAttribute('data-c')); });
+
+  // 无人操作自动回到首页
+  var last = Date.now();
+  ['click', 'touchstart', 'scroll', 'keydown'].forEach(function (ev) { document.addEventListener(ev, function () { last = Date.now(); document.getElementById('idle').classList.add('hidden'); }, { passive: true }); });
+  setInterval(function () {
+    var left = IDLE - Math.floor((Date.now() - last) / 1000);
+    var idle = document.getElementById('idle');
+    if (app.querySelector('.k-grid')) { idle.classList.add('hidden'); return; }
+    if (left <= 0) { home(); last = Date.now(); idle.classList.add('hidden'); }
+    else if (left <= WARN) { idle.textContent = left + ' 秒后返回首页，触摸屏幕继续浏览'; idle.classList.remove('hidden'); }
+  }, 1000);
+  home();
+})();
+</script>
+</body>
+</html>

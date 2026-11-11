@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>安全中心 · M06</title>
+<link rel="stylesheet" href="../assets/css/base.css">
+<style>
+  .matrix td, .matrix th { text-align: center; font-size: 13px; }
+  .matrix td:first-child, .matrix th:first-child { text-align: left; }
+  .yes { color: var(--c-success); font-weight: 700; }
+  .no { color: var(--c-border-strong); }
+  .acc td:first-child { white-space: nowrap; font-weight: 600; }
+</style>
+</head>
+<body>
+<main class="page">
+  <div class="container">
+    <div class="page-head">
+      <h1>数据安全与合规</h1>
+      <p>M06 · 角色权限、操作日志、数据备份、个人信息保护。对应方案 4.1(4)、第八章“数据安全”。</p>
+    </div>
+
+    <div class="grid grid-4 mb-2">
+      <a class="card" href="../m03-admin/index.html"><h3>登录与权限</h3><p class="muted mb-0" style="font-size:14px">四种角色、按权限显示菜单，越权操作被拒绝并记录</p></a>
+      <a class="card" href="logs.html"><h3>操作日志</h3><p class="muted mb-0" style="font-size:14px">登录、增删改、审核、发布、导入导出、越权访问</p></a>
+      <a class="card" href="backup.html"><h3>备份与恢复</h3><p class="muted mb-0" style="font-size:14px">一键导出、从备份恢复、自动快照</p></a>
+      <a class="card" href="privacy.html"><h3>隐私政策</h3><p class="muted mb-0" style="font-size:14px">最小必要收集、用户首次使用需同意</p></a>
+    </div>
+
+    <h2 class="section-title">安全措施与验收对照</h2>
+    <div class="table-wrap mb-2"><table class="table acc">
+      <thead><tr><th>验收项</th><th>要求</th><th>一期（纯前端）实现</th><th>验证方法</th><th>二期（服务器）</th></tr></thead>
+      <tbody>
+        <tr><td>M06-01</td><td>角色权限，越权被拒绝</td><td>管理员、录入员、审核专家、内容运营四种角色；菜单与按钮按权限显示；直接访问无权限页面时拒绝并记录日志；连续 5 次登录失败锁定 5 分钟</td><td>以“录入员”登录后访问“推荐规则配置”页面，应提示无权限，日志出现“越权访问·拒绝”</td><td>服务端鉴权、密码加密存储、会话超时</td></tr>
+        <tr><td>M06-02</td><td>操作日志可查询</td><td>记录操作人、角色、时间、对象、内容、结果；可按时间、人员、结果筛选并导出</td><td>执行任一修改后到“操作日志”查询</td><td>日志入库，只读保存不少于 6 个月</td></tr>
+        <tr><td>M06-03</td><td>自动备份与恢复演练</td><td>修改时自动快照（保留 5 份）；手动导出 JSON 备份；从备份恢复</td><td>导出备份 → 修改一首药膳方 → 从备份恢复，数据回到修改前</td><td>数据库每日自动备份、异地保存</td></tr>
+        <tr><td>M06-04</td><td>不存储患者信息</td><td>数据结构中无姓名、手机号、身份证号、病历等字段；用户仅以匿名设备编号区分</td><td>查看《数据库设计说明书》第 6 节表结构</td><td>同左，接口层校验</td></tr>
+        <tr><td>M06-05</td><td>个人信息保护</td><td>首次使用弹出知情同意；不同意可浏览但不保存；“收藏”页可一键清除本机数据；提供隐私政策</td><td>用新浏览器打开用户端，观察同意弹窗</td><td>隐私政策随正式主体更新；数据删除接口</td></tr>
+      </tbody>
+    </table></div>
+
+    <h2 class="section-title">角色权限矩阵</h2>
+    <div class="table-wrap mb-2"><table class="table matrix" id="matrix"></table></div>
+
+    <div class="notice warn">纯前端版的登录与权限在浏览器端执行，<b>仅用于演示和需求确认</b>，不具备真正的安全防护能力；正式上线须使用二期服务器版本。详见 <a href="../assets/doc-viewer.html?f=m06-security/安全说明.md">《安全说明》</a>（可作为安全评估报告的基础）。</div>
+  </div>
+</main>
+
+<script src="../assets/js/core.js"></script>
+<script src="audit.js"></script>
+<script src="auth.js"></script>
+<script>
+(function () {
+  YS.topbar({ title: 'M06 数据安全与合规', sub: '权限 · 日志 · 备份 · 隐私' });
+  var A = YS.auth, roles = Object.keys(A.ROLES);
+  document.getElementById('matrix').innerHTML = '<thead><tr><th>权限</th>' + roles.map(function (r) { return '<th>' + A.roleName(r) + '</th>'; }).join('') + '</tr></thead><tbody>' +
+    A.PERMS.map(function (p) { return '<tr><td>' + p[1] + '</td>' + roles.map(function (r) { return A.roleCan(r, p[0]) ? '<td class="yes">✓</td>' : '<td class="no">—</td>'; }).join('') + '</tr>'; }).join('') + '</tbody>';
+})();
+</script>
+</body>
+</html>

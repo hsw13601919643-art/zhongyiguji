@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>系统集成与部署 · M05</title>
+<link rel="stylesheet" href="../assets/css/base.css">
+<style>
+  .api-grid { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 16px; align-items: start; }
+  @media (max-width: 860px) { .api-grid { grid-template-columns: minmax(0, 1fr); } }
+  .ep { display: block; width: 100%; text-align: left; padding: 8px 10px; border: 1px solid var(--c-border); border-radius: var(--radius-s); background: var(--c-surface); margin-bottom: 6px; cursor: pointer; font: inherit; font-size: 14px; }
+  .ep.on { border-color: var(--c-primary); background: var(--c-primary-050); }
+  .ep code, .path code { font-size: 12px; color: var(--c-text-3); display: block; }
+  .m { display: inline-block; min-width: 42px; font-size: 11px; font-weight: 700; padding: 0 5px; border-radius: 4px; text-align: center; margin-right: 6px; }
+  .m.GET { background: var(--c-info-050); color: var(--c-info); } .m.POST { background: var(--c-success-050); color: var(--c-success); }
+  textarea.code, pre.code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; font-size: 12.5px; line-height: 1.55; }
+  pre.code { margin: 0; padding: 12px; background: #1f2622; color: #dfe9e4; border-radius: var(--radius-s); max-height: 460px; overflow: auto; white-space: pre-wrap; word-break: break-all; }
+  .ck td:last-child { white-space: nowrap; }
+</style>
+</head>
+<body>
+<main class="page">
+  <div class="container">
+    <div class="page-head">
+      <h1>系统集成与部署</h1>
+      <p>M05 · 预留接口演示、兼容性自检、部署与接口文档。对应方案 4.3。</p>
+    </div>
+    <div class="tabs">
+      <button class="tab on" data-tab="api">接口演示</button>
+      <button class="tab" data-tab="compat">兼容性自检</button>
+      <button class="tab" data-tab="docs">架构与文档</button>
+    </div>
+
+    <section data-pane="api">
+      <div class="notice info mb-2">预留与<b>互联网医院平台、社区长者食堂系统、中医数智化产品</b>对接的接口。一期在浏览器内模拟，请求与返回格式与二期服务器接口一致；二期上线后可用 Postman 等工具直接调用 HTTPS 地址。</div>
+      <div class="api-grid">
+        <div id="eps"></div>
+        <div class="card">
+          <div class="path mb-1" id="path"></div>
+          <label class="field"><span>请求参数（JSON）</span><textarea class="code" id="req" style="min-height:140px"></textarea></label>
+          <div class="row mt-1"><button class="btn primary" id="send">发送请求</button><span class="muted" id="took" style="font-size:13px"></span></div>
+          <div class="field-label mt-2">返回结果</div>
+          <pre class="code" id="res">点击“发送请求”查看返回</pre>
+        </div>
+      </div>
+    </section>
+
+    <section data-pane="compat" class="hidden">
+      <div class="notice info mb-2">在需要验收的设备（PC 浏览器、iOS/Android 手机、微信内）分别打开本页，记录检测结果（验收项 M05-05）。</div>
+      <div class="grid grid-2">
+        <div class="card"><h3>当前设备</h3><div class="table-wrap"><table class="table"><tbody id="env"></tbody></table></div></div>
+        <div class="card"><h3>功能检测</h3><div class="table-wrap"><table class="table ck"><tbody id="feat"></tbody></table></div><div id="verdict" class="mt-2"></div></div>
+      </div>
+      <div class="card mt-2"><h3>页面打开测试</h3><p class="muted" style="font-size:14px">逐一打开并确认布局正常：</p>
+        <div class="tags" id="pages"></div></div>
+    </section>
+
+    <section data-pane="docs" class="hidden">
+      <div class="grid grid-2">
+        <div class="card"><h3>技术架构</h3>
+          <div class="table-wrap"><table class="table"><thead><tr><th>层</th><th>一期（当前）</th><th>二期（方案 4.3）</th></tr></thead><tbody>
+            <tr><td>前端</td><td>HTML + CSS + JavaScript（H5，手机/PC 自适应）</td><td>H5 + 微信小程序</td></tr>
+            <tr><td>后端</td><td>无（浏览器内计算）</td><td>Python（FastAPI）或 Java（Spring Boot）</td></tr>
+            <tr><td>数据库</td><td>浏览器本地存储</td><td>MySQL / PostgreSQL</td></tr>
+            <tr><td>部署</td><td>任意静态网页服务器，或直接打开文件</td><td>阿里云 / 腾讯云，或医院内网服务器</td></tr>
+            <tr><td>接口</td><td>浏览器内模拟（本页）</td><td>HTTPS REST 接口</td></tr>
+          </tbody></table></div>
+        </div>
+        <div class="card"><h3>文档</h3>
+          <ul>
+            <li><a href="../assets/doc-viewer.html?f=m05-deploy/部署文档.md">《部署文档》</a>：运行环境、部署步骤、备份恢复、二期服务器部署</li>
+            <li><a href="../assets/doc-viewer.html?f=m05-deploy/接口文档.md">《接口文档》</a>：8 个预留接口的地址、参数、返回、鉴权</li>
+            <li><a href="../assets/doc-viewer.html?f=m04-engine/算法说明.md">《推荐算法说明》</a></li>
+            <li><a href="../assets/doc-viewer.html?f=m01-database/docs/数据库设计说明书.md">《数据库设计说明书》</a></li>
+          </ul>
+          <div class="notice warn mt-2" style="font-size:13px">建议正式上线时，服务器、域名、小程序账号均以甲方名义注册，便于成果移交（验收项 M05-03、M08-02）。</div>
+        </div>
+      </div>
+    </section>
+  </div>
+</main>
+
+<script src="../assets/js/core.js"></script>
+<script src="../assets/js/solar-terms.js"></script>
+<script src="../assets/js/db.js"></script>
+<script src="../m01-database/data/dicts.js"></script>
+<script src="../m01-database/data/yaoshi-106.js"></script>
+<script src="../m01-database/data/recipes.js"></script>
+<script src="../m01-database/model.js"></script>
+<script src="../m04-engine/rules.js"></script>
+<script src="../m04-engine/engine.js"></script>
+<script src="../m02-user/constitution-data.js"></script>
+<script src="api.js"></script>
+<script>
+(function () {
+  'use strict';
+  var U = YS.util, esc = U.esc;
+  YS.topbar({ title: 'M05 系统集成与部署', sub: '接口 · 兼容性 · 部署' });
+
+  var tabs = document.querySelectorAll('.tab');
+  Array.prototype.forEach.call(tabs, function (t) {
+    t.onclick = function () {
+      Array.prototype.forEach.call(tabs, function (x) { x.classList.toggle('on', x === t); });
+      Array.prototype.forEach.call(document.querySelectorAll('[data-pane]'), function (p) { p.classList.toggle('hidden', p.getAttribute('data-pane') !== t.getAttribute('data-tab')); });
+    };
+  });
+
+  // ---------- 接口演示 ----------
+  var cur = null;
+  document.getElementById('eps').innerHTML = YS.api.ENDPOINTS.map(function (e) {
+    return '<button class="ep" data-id="' + e.id + '"><span class="m ' + e.method + '">' + e.method + '</span>' + esc(e.name) + '<code>' + esc(e.path) + '</code></button>';
+  }).join('');
+  function select(id) {
+    cur = YS.api.ENDPOINTS.filter(function (e) { return e.id === id; })[0];
+    Array.prototype.forEach.call(document.querySelectorAll('.ep'), function (b) { b.classList.toggle('on', b.getAttribute('data-id') === id); });
+    document.getElementById('path').innerHTML = '<span class="m ' + cur.method + '">' + cur.method + '</span><b>' + esc(cur.name) + '</b><code>' + esc(cur.path) + '</code>';
+    var sample = U.clone(cur.sample);
+    if (sample.date === '') sample.date = U.fmtDate();
+    document.getElementById('req').value = JSON.stringify(sample, null, 2);
+    document.getElementById('res').textContent = '点击“发送请求”查看返回';
+    document.getElementById('took').textContent = '';
+  }
+  document.getElementById('eps').onclick = function (e) { var b = e.target.closest('.ep'); if (b) select(b.getAttribute('data-id')); };
+  document.getElementById('send').onclick = function () {
+    var body;
+    try { body = JSON.parse(document.getElementById('req').value || '{}'); } catch (e) { document.getElementById('res').textContent = 'JSON 格式错误：' + e.message; return; }
+    if (cur.id === 'evaluateConstitution' && typeof body.answers === 'string') delete body.answers;
+    var t0 = U.now();
+    YS.api[cur.id](body).then(function (r) {
+      document.getElementById('res').textContent = JSON.stringify(r, null, 2);
+      document.getElementById('took').textContent = '耗时 ' + (U.now() - t0).toFixed(1) + ' 毫秒 · ' + (r.code === 0 ? '成功' : '失败（code ' + r.code + '）');
+    });
+  };
+  select('recommend');
+
+  // ---------- 兼容性 ----------
+  var ua = navigator.userAgent;
+  function browser() {
+    var m;
+    if (/MicroMessenger\/([\d.]+)/.test(ua)) return '微信内置浏览器 ' + RegExp.$1;
+    if ((m = ua.match(/Edg\/([\d.]+)/))) return 'Edge ' + m[1];
+    if ((m = ua.match(/Chrome\/([\d.]+)/))) return 'Chrome 内核 ' + m[1];
+    if ((m = ua.match(/Version\/([\d.]+).*Safari/))) return 'Safari ' + m[1];
+    if ((m = ua.match(/Firefox\/([\d.]+)/))) return 'Firefox ' + m[1];
+    return '其他';
+  }
+  function os() {
+    if (/Android ([\d.]+)/.test(ua)) return 'Android ' + RegExp.$1;
+    if (/iPhone OS ([\d_]+)/.test(ua)) return 'iOS ' + RegExp.$1.replace(/_/g, '.');
+    if (/iPad/.test(ua)) return 'iPadOS';
+    if (/Windows NT ([\d.]+)/.test(ua)) return 'Windows NT ' + RegExp.$1;
+    if (/Mac OS X/.test(ua)) return 'macOS';
+    if (/Linux/.test(ua)) return 'Linux';
+    return '未知';
+  }
+  document.getElementById('env').innerHTML = [
+    ['设备类型', U.isMobile() ? '手机/平板' : '电脑'], ['操作系统', os()], ['浏览器', browser()],
+    ['屏幕', screen.width + ' × ' + screen.height + '（像素比 ' + (window.devicePixelRatio || 1) + '）'],
+    ['当前窗口', window.innerWidth + ' × ' + window.innerHeight], ['打开方式', U.isFile() ? '本地文件（file://）' : location.protocol + '//' + location.host],
+    ['检测时间', U.fmtTime()]
+  ].map(function (r) { return '<tr><td class="muted nowrap">' + r[0] + '</td><td>' + esc(r[1]) + '</td></tr>'; }).join('');
+  var feats = [
+    ['本地存储（保存测评与收藏）', YS.storage.available(), true],
+    ['会话存储（问卷进度）', (function () { try { sessionStorage.setItem('__t', 1); sessionStorage.removeItem('__t'); return true; } catch (e) { return false; } })(), true],
+    ['CSS 网格布局（自适应排版）', !!(window.CSS && CSS.supports && CSS.supports('display', 'grid')), true],
+    ['Promise（接口调用）', typeof Promise !== 'undefined', true],
+    ['SVG（图表、二维码）', !!document.createElementNS && !!document.createElementNS('http://www.w3.org/2000/svg', 'svg').createSVGRect, true],
+    ['系统分享', !!navigator.share, false], ['剪贴板', !!navigator.clipboard, false],
+    ['触摸屏', ('ontouchstart' in window) || navigator.maxTouchPoints > 0, false],
+    ['HTTPS 安全环境', location.protocol === 'https:' || location.hostname === 'localhost', false]
+  ];
+  document.getElementById('feat').innerHTML = feats.map(function (f) {
+    return '<tr><td>' + f[0] + (f[2] ? ' <span class="badge">必需</span>' : '') + '</td><td>' + (f[1] ? '<span class="badge green">✓ 支持</span>' : (f[2] ? '<span class="badge red">✕ 不支持</span>' : '<span class="badge">— 不支持（不影响使用）</span>')) + '</td></tr>';
+  }).join('');
+  var pass = feats.filter(function (f) { return f[2]; }).every(function (f) { return f[1]; });
+  document.getElementById('verdict').innerHTML = pass ? '<div class="notice ok"><b>兼容</b>：本设备满足全部必需功能。</div>' : '<div class="notice danger"><b>不兼容</b>：缺少必需功能，请更换或升级浏览器。</div>';
+  document.getElementById('pages').innerHTML = [['用户端首页', '../m02-user/index.html'], ['体质测评', '../m02-user/constitution.html'], ['三餐推荐', '../m02-user/recommend.html'], ['药膳详情', '../m02-user/detail.html?id=YS0001'], ['科普', '../m02-user/science.html'], ['管理端', '../m03-admin/index.html'], ['方库', '../m01-database/index.html'], ['触摸屏模式', '../m07-promotion/kiosk.html']]
+    .map(function (p) { return '<a class="badge primary" href="' + p[1] + '" target="_blank">' + p[0] + ' ↗</a>'; }).join('');
+})();
+</script>
+</body>
+</html>

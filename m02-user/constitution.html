@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#2f5d50">
+<title>中医体质测评</title>
+<link rel="stylesheet" href="../assets/css/base.css">
+<link rel="stylesheet" href="../assets/css/user.css">
+<style>.u-main { max-width: 680px; }</style>
+</head>
+<body>
+<main class="u-main" id="app"></main>
+
+<script src="../assets/js/core.js"></script>
+<script src="../assets/js/solar-terms.js"></script>
+<script src="../assets/js/db.js"></script>
+<script src="../assets/js/charts.js"></script>
+<script src="../m01-database/data/dicts.js"></script>
+<script src="constitution-data.js"></script>
+<script src="user.js"></script>
+<script>
+(function () {
+  'use strict';
+  var U = YS.util, esc = U.esc, D = YS.dict, CT = YS.constitutionTest;
+  YS.user.init({ title: '中医体质测评', back: 'index.html', tab: 'home', page: '体质测评' });
+  var app = document.getElementById('app');
+  var p = YS.track.profile();
+  var st = YS.session.get('ctest', null) || { step: 'intro', gender: p.gender || '', ageGroup: p.ageGroup || '', region: p.region || '江南', answers: {}, idx: 0 };
+  function save() { YS.session.set('ctest', st); }
+
+  function intro() {
+    app.innerHTML =
+      '<div class="card">' +
+      '<h2>测一测您的中医体质</h2>' +
+      '<p class="text-2">采用中华中医药学会《中医体质分类与判定》标准问卷，共 ' + CT.count + ' 题，约 5 分钟。请根据<b>近一年</b>的体验和感觉作答。</p>' +
+      '<div class="stack">' +
+      '<div><span class="field-label">性别（用于个别题目）</span><div id="g"></div></div>' +
+      '<label class="field"><span>年龄段</span><select id="age"><option value="">请选择</option>' + D.ages.map(function (a) { return '<option value="' + a.name + '"' + (st.ageGroup === a.name ? ' selected' : '') + '>' + a.name + '（' + a.range + '）</option>'; }).join('') + '</select></label>' +
+      '<label class="field"><span>所在地域</span><select id="region">' + D.regions.map(function (r) { return '<option value="' + r.name + '"' + (st.region === r.name ? ' selected' : '') + '>' + esc(r.text) + '</option>'; }).join('') + '</select></label>' +
+      '</div>' +
+      '<button class="btn primary lg block mt-3" id="start">' + (Object.keys(st.answers).length ? '继续作答（已答 ' + Object.keys(st.answers).length + ' 题）' : '开始测评') + '</button>' +
+      '</div>' +
+      '<div class="card mt-2"><h3>已知道自己的体质？</h3><p class="muted" style="font-size:14px">可直接选择，用于药膳推荐。</p>' +
+      '<div class="row tight"><select id="manual" style="flex:1"><option value="">请选择体质</option>' + D.names('constitutions').map(function (n) { return '<option' + (p.constitution === n ? ' selected' : '') + '>' + n + '</option>'; }).join('') + '</select><button class="btn" id="manual-save">保存</button></div></div>';
+    var g = YS.ui.chips(document.getElementById('g'), ['女', '男'], st.gender ? [st.gender] : [], false, function (v) { st.gender = v[0] || ''; });
+    document.getElementById('start').onclick = function () {
+      st.gender = g.get()[0] || '';
+      if (!st.gender) { YS.ui.toast('请先选择性别'); return; }
+      st.ageGroup = document.getElementById('age').value;
+      st.region = document.getElementById('region').value;
+      st.step = 'q'; save(); question();
+    };
+    document.getElementById('manual-save').onclick = function () {
+      var v = document.getElementById('manual').value;
+      if (!v) { YS.ui.toast('请选择体质'); return; }
+      YS.user.requireConsent(function () {
+        var pf = YS.track.profile();
+        pf.constitution = v; pf.secondary = []; pf.testedAt = null; pf.region = document.getElementById('region').value; pf.ageGroup = document.getElementById('age').value || pf.ageGroup;
+        YS.track.saveProfile(pf);
+        YS.ui.toast('已保存', 'ok');
+        setTimeout(function () { location.href = 'recommend.html'; }, 500);
+      });
+    };
+  }
+
+  function question() {
+    var q = CT.questions[st.idx];
+    var n = CT.questions.length;
+    app.innerHTML = '<div class="card">' +
+      '<div class="row between" style="font-size:13px"><span class="muted">第 ' + (st.idx + 1) + ' / ' + n + ' 题</span><button class="btn ghost sm" id="quit">稍后再答</button></div>' +
+      '<div class="q-progress mt-1"><i style="width:' + (st.idx / n * 100) + '%"></i></div>' +
+      '<div class="q-text" id="qt">' + esc(CT.questionText(q, st.gender)) + '</div>' +
+      '<div class="q-opts" role="radiogroup" aria-labelledby="qt">' + CT.OPTIONS.map(function (o) {
+        var on = st.answers[q.id] === o.v;
+        return '<button type="button" class="q-opt' + (on ? ' on' : '') + '" role="radio" aria-checked="' + on + '" data-v="' + o.v + '"><span>' + o.text + '</span><small>' + o.sub + '</small></button>';
+      }).join('') + '</div>' +
+      '<div class="row between mt-2"><button class="btn" id="prev"' + (st.idx === 0 ? ' disabled' : '') + '>上一题</button>' +
+      (st.idx === n - 1 && st.answers[q.id] ? '<button class="btn primary" id="finish">查看结果</button>' : '<button class="btn" id="next"' + (st.answers[q.id] ? '' : ' disabled') + '>下一题</button>') + '</div></div>';
+    app.querySelector('.q-opts').onclick = function (e) {
+      var b = e.target.closest('.q-opt'); if (!b) return;
+      st.answers[q.id] = Number(b.getAttribute('data-v')); save();
+      Array.prototype.forEach.call(app.querySelectorAll('.q-opt'), function (x) { x.classList.toggle('on', x === b); x.setAttribute('aria-checked', x === b); });
+      setTimeout(function () { if (st.idx < n - 1) { st.idx++; save(); question(); } else { question(); } }, 160);
+    };
+    document.getElementById('prev').onclick = function () { if (st.idx > 0) { st.idx--; save(); question(); } };
+    var nx = document.getElementById('next'); if (nx) nx.onclick = function () { st.idx++; save(); question(); };
+    var fin = document.getElementById('finish'); if (fin) fin.onclick = function () { st.step = 'result'; save(); result(); };
+    document.getElementById('quit').onclick = function () { st.step = 'intro'; save(); intro(); };
+  }
+
+  function result() {
+    var ev = CT.evaluate(st.answers);
+    if (ev.missing.length) { st.step = 'q'; st.idx = CT.questions.findIndex(function (q) { return q.id === ev.missing[0]; }); save(); question(); return; }
+    var c = D.constitution(ev.primary) || {};
+    app.innerHTML = '<div class="card center">' +
+      '<div class="muted">您的主要体质</div><div class="result-big">' + esc(ev.primary) + '</div>' +
+      (ev.weak ? '<p class="muted" style="font-size:13px">未见明显偏颇体质，暂按平和质推荐</p>' : '<p class="muted" style="font-size:13px">判定：' + esc(ev.judge[ev.primary]) + '</p>') +
+      (ev.secondary.length ? '<p style="font-size:14px">兼有倾向：<b>' + esc(ev.secondary.join('、')) + '</b></p>' : '') +
+      '</div>' +
+      '<div class="card mt-2"><h3>体质特征与饮食调养</h3><p class="text-2" style="font-size:14px">' + esc(c.feature) + '</p><p style="font-size:14px"><b>饮食调养：</b>' + esc(c.diet) + '</p></div>' +
+      '<div class="card mt-2"><div class="card-title"><h3>各体质转化分</h3><span class="muted" style="font-size:12px">虚线：30 倾向是 · 40 是 · 60 平和质</span></div><div id="chart"></div>' +
+      '<details class="mt-1"><summary style="cursor:pointer;font-size:14px;color:var(--c-primary)">查看判定明细（表格）</summary><div class="table-wrap mt-1"><table class="table"><thead><tr><th>体质</th><th class="num">转化分</th><th>判定</th></tr></thead><tbody>' +
+      CT.ORDER.map(function (t) { return '<tr><td>' + t + '</td><td class="num">' + ev.scores[t] + '</td><td>' + ev.judge[t] + '</td></tr>'; }).join('') + '</tbody></table></div></details></div>' +
+      '<div class="grid grid-2 mt-2"><button class="btn primary lg" id="go">保存并查看推荐药膳</button><button class="btn lg" id="again">重新测评</button></div>' +
+      '<p class="disclaimer">体质测评结果仅用于饮食调养参考，不作为疾病诊断依据。</p>';
+    YS.charts.hbar(document.getElementById('chart'), CT.ORDER.map(function (t) {
+      return { label: t, value: ev.scores[t], display: ev.scores[t].toFixed(1), highlight: t === ev.primary, note: ev.judge[t] === '否' ? '' : ev.judge[t] };
+    }), { max: 100, thresholds: [{ value: 30, label: '30' }, { value: 40, label: '40' }, { value: 60, label: '60' }], label: '九种体质转化分' });
+    document.getElementById('go').onclick = function () {
+      var goto = function () { location.href = 'recommend.html?c=' + encodeURIComponent(ev.primary); };
+      YS.user.requireConsent(function () { persist(ev); goto(); }, goto);
+    };
+    document.getElementById('again').onclick = function () { st = { step: 'intro', gender: st.gender, ageGroup: st.ageGroup, region: st.region, answers: {}, idx: 0 }; save(); intro(); };
+  }
+  function persist(ev) {
+    var pf = YS.track.profile();
+    pf.constitution = ev.primary; pf.secondary = ev.secondary; pf.scores = ev.scores; pf.testedAt = Date.now();
+    pf.gender = st.gender; pf.ageGroup = st.ageGroup; pf.region = st.region;
+    YS.track.saveProfile(pf);
+    var n = YS.storage.get('test_count', 0); YS.storage.set('test_count', n + 1);
+    var logs = YS.storage.get('c_testlogs', []); logs.push({ t: Date.now(), uid: pf.id, result: ev.primary, src: YS.track.src() }); YS.storage.set('c_testlogs', logs.slice(-3000));
+    YS.session.remove('ctest');
+  }
+
+  if (st.step === 'q') question(); else if (st.step === 'result') result(); else intro();
+})();
+</script>
+</body>
+</html>

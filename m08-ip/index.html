@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>知识产权与保密 · M08</title>
+<link rel="stylesheet" href="../assets/css/base.css">
+</head>
+<body>
+<main class="page">
+  <div class="container">
+    <div class="page-head">
+      <h1>知识产权与保密</h1>
+      <p>M08 · 对应方案第三章考核指标“协助申请软件著作权 1 项”及第八章“知识产权与保密”。</p>
+    </div>
+    <div class="grid grid-2" id="docs"></div>
+    <h2 class="section-title">验收要点</h2>
+    <div class="table-wrap"><table class="table">
+      <thead><tr><th>验收项</th><th>要求</th><th>证明材料</th></tr></thead>
+      <tbody>
+        <tr><td class="nowrap"><b>M08-01</b> ★</td><td>提交软著申请 1 项，权利人为上海市第七人民医院</td><td>受理通知书或登记证书</td></tr>
+        <tr><td class="nowrap"><b>M08-02</b></td><td>合同明确成果归甲方；源代码、数据库、账号完整移交</td><td>合同条款、成果移交清单（签字）</td></tr>
+        <tr><td class="nowrap"><b>M08-03</b></td><td>签订保密条款，保密期至项目结束后 5 年</td><td>合同保密条款、成员保密承诺书</td></tr>
+      </tbody>
+    </table></div>
+  </div>
+</main>
+<script src="../assets/js/core.js"></script>
+<script src="../assets/js/markdown.js"></script>
+<script>
+YS.topbar({ title: 'M08 知识产权与保密', sub: '软著 · 成果归属 · 保密' });
+document.getElementById('docs').innerHTML = [
+  ['软件著作权申请材料草稿', 'm08-ip/软件著作权申请材料草稿.md', '申请表信息、功能与技术特点说明、材料清单、源程序整理建议、时间安排'],
+  ['成果归属与保密要点', 'm08-ip/成果归属与保密要点.md', '合同知识产权条款建议、成果移交清单、保密条款、成员保密承诺书模板']
+].map(function (d) {
+  return '<a class="card" href="' + YS.docUrl(d[1]) + '" style="color:var(--c-text)"><h3>' + YS.util.esc(d[0]) + '</h3><p class="muted mb-0" style="font-size:14px">' + YS.util.esc(d[2]) + '</p></a>';
+}).join('');
+</script>
+</body>
+</html>

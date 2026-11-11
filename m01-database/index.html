@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>经典药膳方数据库 · M01</title>
+<link rel="stylesheet" href="../assets/css/base.css">
+<style>
+  .filters { display: grid; grid-template-columns: 1.6fr repeat(4, 1fr) 1.3fr; gap: 10px; }
+  @media (max-width: 900px) { .filters { grid-template-columns: 1fr 1fr; } .filters .q { grid-column: 1 / -1; } }
+  .recipe-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+  .recipe-card { cursor: pointer; transition: border-color .15s, box-shadow .15s; }
+  .recipe-card:hover { border-color: var(--c-primary-100); box-shadow: var(--shadow-2); }
+  .recipe-card .meta { display: flex; flex-wrap: wrap; gap: 6px; }
+  .book-bars { display: grid; gap: 6px; }
+  .book-bar { display: grid; grid-template-columns: 96px 1fr 28px; gap: 8px; align-items: center; font-size: 13px; }
+  .book-bar .bar { height: 10px; background: var(--c-primary-050); border-radius: 5px; overflow: hidden; }
+  .book-bar .bar i { display: block; height: 100%; background: var(--c-primary); border-radius: 5px; }
+</style>
+</head>
+<body>
+<main class="page">
+  <div class="container">
+    <div class="page-head row between">
+      <div>
+        <h1>经典药膳方数据库</h1>
+        <p>M01 · 收录古籍药膳方、106 种药食同源目录与标准字典。数据保存在本机浏览器，管理端修改后此处同步更新。</p>
+      </div>
+      <div class="row tight no-print">
+        <a class="btn" href="template/recipe-import-template.csv" download>下载录入模板</a>
+        <a class="btn primary" href="../m03-admin/recipes.html">去管理端维护</a>
+      </div>
+    </div>
+
+    <div class="grid grid-4 mb-2" id="kpis"></div>
+
+    <div class="tabs" role="tablist">
+      <button class="tab on" data-tab="recipes">药膳方库</button>
+      <button class="tab" data-tab="yaoshi">药食同源目录（106种）</button>
+      <button class="tab" data-tab="dict">标准字典</button>
+      <button class="tab" data-tab="fields">字段说明</button>
+    </div>
+
+    <!-- 药膳方库 -->
+    <section data-pane="recipes">
+      <div class="grid" style="grid-template-columns: minmax(0,1fr) 260px; align-items:start" id="recipes-layout">
+        <div>
+          <div class="filters mb-2">
+            <input class="q" type="search" id="q" placeholder="搜索方名、组成、功效…">
+            <select id="f-book"><option value="">全部古籍</option></select>
+            <select id="f-con"><option value="">全部体质</option></select>
+            <select id="f-organ"><option value="">全部脏腑</option></select>
+            <select id="f-season"><option value="">全部季节</option></select>
+            <select id="f-yaoshi"><option value="">药食同源：不限</option><option value="ok">目录内（合规）</option><option value="bad">含目录外药材</option></select>
+          </div>
+          <div class="row between mb-1"><span class="muted" id="count"></span>
+            <label class="row tight" style="font-size:14px"><input type="checkbox" id="f-pub"> 仅显示已发布</label></div>
+          <div class="recipe-grid" id="list"></div>
+        </div>
+        <aside class="card">
+          <h3>按古籍统计</h3>
+          <div class="book-bars" id="book-bars"></div>
+          <div class="notice warn mt-2" style="font-size:13px">示例数据的出处、原文及体质等标注均<strong>待甲方文献团队与专家审核</strong>，正式数据请通过录入模板批量导入。</div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- 药食同源目录 -->
+    <section data-pane="yaoshi" class="hidden">
+      <div class="notice warn mb-2" id="ys-verify"></div>
+      <div class="row mb-2"><input type="search" id="ys-q" placeholder="搜索名称或别名…" style="max-width:280px"><div class="chips sm" id="ys-batch"></div></div>
+      <div class="table-wrap"><table class="table"><thead><tr><th class="num">序号</th><th>名称</th><th>别名</th><th>批次</th><th>备注</th><th class="num">引用方剂数</th></tr></thead><tbody id="ys-body"></tbody></table></div>
+    </section>
+
+    <!-- 标准字典 -->
+    <section data-pane="dict" class="hidden">
+      <div class="grid grid-2">
+        <div class="card"><h3>九种体质</h3><div class="table-wrap"><table class="table"><thead><tr><th>体质</th><th>特征</th><th>饮食调养</th></tr></thead><tbody id="d-con"></tbody></table></div></div>
+        <div class="card"><h3>五脏与五行对应</h3><div class="table-wrap"><table class="table"><thead><tr><th>脏</th><th>五行</th><th>五色</th><th>五味</th><th>应时</th><th>说明</th></tr></thead><tbody id="d-organ"></tbody></table></div>
+          <h3 class="mt-2">年龄段</h3><div class="tags" id="d-age"></div>
+          <h3 class="mt-2">地域（应地）</h3><div class="tags" id="d-region"></div>
+          <h3 class="mt-2">餐次 / 膳食类别 / 四气</h3><div class="tags" id="d-misc"></div>
+        </div>
+      </div>
+      <div class="card mt-2"><div class="card-title"><h3 id="d-term-title">二十四节气</h3><span class="muted" style="font-size:13px">日期由系统按公式计算，用于“默认当前节气”</span></div>
+        <div class="table-wrap"><table class="table"><thead><tr><th>季节</th><th>节气</th><th>日期</th><th>养生提示</th></tr></thead><tbody id="d-term"></tbody></table></div></div>
+    </section>
+
+    <!-- 字段说明 -->
+    <section data-pane="fields" class="hidden">
+      <div class="grid grid-2">
+        <div class="card"><h3>必备字段（方案 4.1(2)，共 13 项）</h3><div class="table-wrap"><table class="table"><thead><tr><th class="num">#</th><th>字段</th><th>说明</th></tr></thead><tbody id="f-base"></tbody></table></div></div>
+        <div class="card"><h3>扩展字段（推荐算法所需）</h3><div class="table-wrap"><table class="table"><thead><tr><th>字段</th><th>说明</th></tr></thead><tbody id="f-ext"></tbody></table></div>
+          <h3 class="mt-3">相关文档</h3>
+          <ul>
+            <li><a href="../assets/doc-viewer.html?f=m01-database/docs/数据库设计说明书.md">《经典药膳方数据库设计说明书》</a></li>
+            <li><a href="../assets/doc-viewer.html?f=m01-database/docs/数据采集与标注规范.md">《药膳方数据采集与标注规范》</a></li>
+            <li><a href="template/recipe-import-template.csv" download>药膳方录入模板（CSV，可用 Excel 打开）</a></li>
+          </ul>
+        </div>
+      </div>
+    </section>
+  </div>
+</main>
+<footer class="footer"><div class="container">经典药膳方数据库及“三餐四季”推荐系统 · 纯前端演示版</div></footer>
+
+<script src="../assets/js/core.js"></script>
+<script src="../assets/js/solar-terms.js"></script>
+<script src="../assets/js/db.js"></script>
+<script src="data/dicts.js"></script>
+<script src="data/yaoshi-106.js"></script>
+<script src="data/recipes.js"></script>
+<script src="model.js"></script>
+<script>
+(function () {
+  'use strict';
+  var U = YS.util, esc = U.esc, M = YS.model, D = YS.dict;
+  YS.topbar({ title: 'M01 经典药膳方数据库', sub: '数据库建设' });
+
+  var all = YS.db.list('recipes');
+
+  // ---------- 统计 ----------
+  var pub = all.filter(function (r) { return r.status === 'published'; }).length;
+  var ok = all.filter(function (r) { return M.compliance(r).ok; }).length;
+  var std = all.filter(function (r) { return r.standardized; }).length;
+  document.getElementById('kpis').innerHTML = [
+    ['收录药膳方', all.length, '首', '其中已发布 ' + pub + ' 首'],
+    ['药食同源合规', ok, '首', '含目录外药材 ' + (all.length - ok) + ' 首（推荐时自动过滤）'],
+    ['药食同源目录', M.yaoshi().length, '种', '2002/2019/2023/2024 四批'],
+    ['标准化打样', std, '/ 40 方', '验收目标 40 方（M01-14）']
+  ].map(function (k) {
+    return '<div class="kpi"><div class="label">' + k[0] + '</div><div class="value">' + k[1] + ' <small style="font-size:14px">' + k[2] + '</small></div><div class="sub">' + k[3] + '</div></div>';
+  }).join('');
+
+  // ---------- 筛选项 ----------
+  function fill(id, vals) { var s = document.getElementById(id); vals.forEach(function (v) { var o = document.createElement('option'); o.value = o.textContent = v; s.appendChild(o); }); }
+  fill('f-book', U.uniq(all.map(function (r) { return r.source.book; })));
+  fill('f-con', D.names('constitutions'));
+  fill('f-organ', D.names('organs'));
+  fill('f-season', D.seasons);
+
+  var bookCount = {};
+  all.forEach(function (r) { bookCount[r.source.book] = (bookCount[r.source.book] || 0) + 1; });
+  var maxB = Math.max.apply(null, Object.keys(bookCount).map(function (k) { return bookCount[k]; }).concat([1]));
+  document.getElementById('book-bars').innerHTML = Object.keys(bookCount).sort(function (a, b) { return bookCount[b] - bookCount[a]; }).map(function (b) {
+    return '<div class="book-bar"><span>《' + esc(b) + '》</span><span class="bar"><i style="width:' + (bookCount[b] / maxB * 100) + '%"></i></span><span class="right">' + bookCount[b] + '</span></div>';
+  }).join('');
+
+  function render() {
+    var q = document.getElementById('q').value.trim();
+    var fb = document.getElementById('f-book').value, fc = document.getElementById('f-con').value;
+    var fo = document.getElementById('f-organ').value, fs = document.getElementById('f-season').value;
+    var fy = document.getElementById('f-yaoshi').value, fp = document.getElementById('f-pub').checked;
+    var rows = all.filter(function (r) {
+      if (fb && r.source.book !== fb) return false;
+      if (fc && r.constitutions.indexOf(fc) < 0) return false;
+      if (fo && r.organs.indexOf(fo) < 0) return false;
+      if (fs && r.seasons.indexOf(fs) < 0) return false;
+      if (fp && r.status !== 'published') return false;
+      if (fy) { var c = M.compliance(r).ok; if ((fy === 'ok') !== c) return false; }
+      if (q) {
+        var hay = [r.name, r.alias, r.efficacy, r.indication, M.compText(r), (r.tags || []).join('')].join(' ');
+        if (hay.indexOf(q) < 0) return false;
+      }
+      return true;
+    });
+    document.getElementById('count').textContent = '共 ' + rows.length + ' 首';
+    document.getElementById('list').innerHTML = rows.length ? rows.map(function (r) {
+      return '<article class="card recipe-card" data-id="' + esc(r.id) + '" tabindex="0">' +
+        '<div class="row between"><span class="name">' + esc(r.name) + '</span><span class="muted" style="font-size:12px">' + esc(r.id) + '</span></div>' +
+        '<div class="src">' + esc(M.sourceText(r)) + '</div>' +
+        '<div class="eff">' + esc(r.efficacy) + '</div>' +
+        M.compHtml(r) +
+        '<div class="meta">' + M.yaoshiBadge(r) + M.statusBadge(r.status) + M.sampleBadge(r) +
+        '<span class="badge">' + esc(r.category) + '</span><span class="badge">' + esc(r.constitutions.join('、')) + '</span></div>' +
+        '</article>';
+    }).join('') : '<div class="empty">没有符合条件的药膳方</div>';
+  }
+  ['q', 'f-book', 'f-con', 'f-organ', 'f-season', 'f-yaoshi', 'f-pub'].forEach(function (id) {
+    document.getElementById(id).addEventListener(id === 'q' ? 'input' : 'change', U.debounce(render, 120));
+  });
+  function openDetail(id) {
+    var r = all.filter(function (x) { return x.id === id; })[0];
+    if (!r) return;
+    YS.ui.modal({ title: r.name + ' · ' + r.id, wide: true, html: M.detailHtml(r, { workflow: true }),
+      actions: [{ text: '在用户端查看', cls: 'primary', onClick: function () { location.href = '../m02-user/detail.html?id=' + encodeURIComponent(r.id); } }, { text: '关闭' }] });
+  }
+  document.getElementById('list').addEventListener('click', function (e) { var c = e.target.closest('.recipe-card'); if (c) openDetail(c.getAttribute('data-id')); });
+  document.getElementById('list').addEventListener('keydown', function (e) { var c = e.target.closest('.recipe-card'); if (c && e.key === 'Enter') openDetail(c.getAttribute('data-id')); });
+  render();
+
+  // ---------- 药食同源目录 ----------
+  var used = {};
+  all.forEach(function (r) { M.compliance(r).listed.forEach(function (n) { used[n] = (used[n] || 0) + 1; }); });
+  document.getElementById('ys-verify').innerHTML = '本目录共 <b>' + M.yaoshi().length + '</b> 种（' + esc(YS.seed.yaoshiMeta.verify) + '）。使用部位、食用限量及人群限制以公告原文为准。';
+  var batches = U.uniq(M.yaoshi().map(function (y) { return y.batch; }));
+  var batchSel = YS.ui.chips(document.getElementById('ys-batch'), batches, [], false, renderYs);
+  function renderYs() {
+    var q = document.getElementById('ys-q').value.trim(), b = batchSel.get()[0];
+    var rows = M.yaoshi().filter(function (y) {
+      if (b && y.batch !== b) return false;
+      return !q || y.name.indexOf(q) >= 0 || y.aliases.join(' ').indexOf(q) >= 0;
+    });
+    document.getElementById('ys-body').innerHTML = rows.map(function (y) {
+      return '<tr><td class="num">' + y.no + '</td><td><b>' + esc(y.name) + '</b></td><td>' + esc(y.aliases.join('、')) + '</td><td>' + esc(y.batch) + '</td><td class="text-2">' + esc(y.note) + '</td><td class="num">' + (used[y.name] || '') + '</td></tr>';
+    }).join('') || '<tr><td colspan="6" class="empty">无匹配项</td></tr>';
+  }
+  document.getElementById('ys-q').addEventListener('input', renderYs);
+  renderYs();
+
+  // ---------- 字典 ----------
+  document.getElementById('d-con').innerHTML = D.constitutions.map(function (c) { return '<tr><td class="nowrap"><b>' + c.name + '</b></td><td>' + esc(c.feature) + '</td><td>' + esc(c.diet) + '</td></tr>'; }).join('');
+  document.getElementById('d-organ').innerHTML = D.organs.map(function (o) { return '<tr><td><b>' + o.name + '</b></td><td>' + o.element + '</td><td><span class="wx wx-' + o.color + '"></span>' + o.color + '</td><td>' + o.taste + '</td><td>' + o.season + '</td><td class="text-2">' + esc(o.note) + '</td></tr>'; }).join('');
+  document.getElementById('d-age').innerHTML = D.ages.map(function (a) { return '<span class="badge">' + a.name + '（' + a.range + '）</span>'; }).join('');
+  document.getElementById('d-region').innerHTML = D.regions.map(function (a) { return '<span class="badge">' + esc(a.text) + (a.climate ? '·' + a.climate : '') + '</span>'; }).join('');
+  document.getElementById('d-misc').innerHTML = D.meals.map(function (m) { return '<span class="badge primary">' + D.mealNames[m] + '</span>'; }).join('') +
+    D.categories.map(function (m) { return '<span class="badge">' + m + '</span>'; }).join('') + D.natures.map(function (m) { return '<span class="badge accent">' + m + '</span>'; }).join('');
+  var year = new Date().getFullYear(), cur = YS.solar.termOf(new Date());
+  document.getElementById('d-term-title').textContent = '二十四节气（' + year + '年）';
+  document.getElementById('d-term').innerHTML = YS.solar.ORDER.map(function (t) {
+    var d = YS.solar.dateOf(year, t);
+    return '<tr' + (t === cur ? ' style="background:var(--c-primary-050)"' : '') + '><td>' + YS.solar.seasonOf(t) + '</td><td><b>' + t + '</b>' + (t === cur ? ' <span class="badge solid">当前</span>' : '') + '</td><td class="nowrap">' + U.fmtDate(d) + '</td><td class="text-2">' + esc(D.termTips[t]) + '</td></tr>';
+  }).join('');
+
+  // ---------- 字段说明 ----------
+  document.getElementById('f-base').innerHTML = M.FIELDS.map(function (f, i) { return '<tr><td class="num">' + (i + 1) + '</td><td><b>' + f.label + '</b></td><td class="text-2">' + esc(f.note) + '</td></tr>'; }).join('');
+  document.getElementById('f-ext').innerHTML = M.EXT_FIELDS.map(function (f) { return '<tr><td><b>' + f.label + '</b></td><td class="text-2">' + esc(f.note) + '</td></tr>'; }).join('');
+
+  // ---------- 标签页 ----------
+  var tabs = document.querySelectorAll('.tab');
+  function show(name) {
+    Array.prototype.forEach.call(tabs, function (t) { t.classList.toggle('on', t.getAttribute('data-tab') === name); });
+    Array.prototype.forEach.call(document.querySelectorAll('[data-pane]'), function (p) { p.classList.toggle('hidden', p.getAttribute('data-pane') !== name); });
+    history.replaceState(null, '', '#' + name);
+  }
+  Array.prototype.forEach.call(tabs, function (t) { t.onclick = function () { show(t.getAttribute('data-tab')); }; });
+  if (location.hash) show(location.hash.slice(1));
+  if (window.matchMedia('(max-width: 900px)').matches) document.getElementById('recipes-layout').style.gridTemplateColumns = 'minmax(0,1fr)';
+})();
+</script>
+</body>
+</html>

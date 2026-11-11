@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>科普内容管理</title>
+<link rel="stylesheet" href="../assets/css/base.css">
+<link rel="stylesheet" href="../assets/css/admin.css">
+</head>
+<body>
+<div id="adm-content" class="hidden">
+  <div class="toolbar">
+    <select id="fc"><option value="">全部栏目</option></select>
+    <select id="fs"><option value="">全部状态</option><option value="published">已上架</option><option value="offline">已下架</option><option value="draft">草稿</option></select>
+    <span class="spacer"></span>
+    <button class="btn primary" id="add">＋ 新增内容</button>
+  </div>
+  <div class="table-wrap"><table class="table"><thead><tr><th>标题</th><th>栏目</th><th>类型</th><th>状态</th><th>更新时间</th><th>操作</th></tr></thead><tbody id="tb"></tbody></table></div>
+</div>
+
+<script src="../assets/js/core.js"></script>
+<script src="../assets/js/solar-terms.js"></script>
+<script src="../assets/js/db.js"></script>
+<script src="../m01-database/data/dicts.js"></script>
+<script src="../m01-database/data/yaoshi-106.js"></script>
+<script src="../m01-database/data/recipes.js"></script>
+<script src="../m01-database/model.js"></script>
+<script src="../m02-user/data/contents.js"></script>
+<script src="../m06-security/audit.js"></script>
+<script src="../m06-security/auth.js"></script>
+<script src="admin.js"></script>
+<script>
+(function () {
+  'use strict';
+  if (!YS.admin.init({ key: 'content', title: '科普内容管理', perm: 'content.view' })) return;
+  var U = YS.util, esc = U.esc, A = YS.auth;
+  var ST = { published: ['已上架', 'green'], offline: ['已下架', ''], draft: ['草稿', 'amber'] };
+  YS.contentCategories.forEach(function (c) { var o = document.createElement('option'); o.value = o.textContent = c; document.getElementById('fc').appendChild(o); });
+  if (!A.can('content.edit')) document.getElementById('add').classList.add('hidden');
+  ['fc', 'fs'].forEach(function (id) { document.getElementById(id).onchange = render; });
+
+  function render() {
+    var fc = document.getElementById('fc').value, fs = document.getElementById('fs').value;
+    var rows = YS.db.list('contents').filter(function (x) { return (!fc || x.category === fc) && (!fs || x.status === fs); })
+      .sort(function (a, b) { return (b.updatedAt || 0) - (a.updatedAt || 0); });
+    document.getElementById('tb').innerHTML = rows.map(function (x) {
+      var s = ST[x.status] || [x.status, ''];
+      return '<tr><td><b>' + esc(x.title) + '</b><div class="muted" style="font-size:12px">' + esc(x.summary) + '</div></td><td class="nowrap">' + esc(x.category) + '</td><td>' + esc(x.type) + '</td>' +
+        '<td><span class="badge ' + s[1] + '">' + s[0] + '</span></td><td class="nowrap">' + U.fmtTime(x.updatedAt) + '</td><td class="actions">' +
+        '<button class="btn sm" data-act="view" data-id="' + esc(x.id) + '">预览</button>' +
+        (A.can('content.edit') ? '<button class="btn sm" data-act="edit" data-id="' + esc(x.id) + '">编辑</button>' : '') +
+        (A.can('content.publish') ? (x.status === 'published' ? '<button class="btn sm" data-act="off" data-id="' + esc(x.id) + '">下架</button>' : '<button class="btn sm primary" data-act="on" data-id="' + esc(x.id) + '">上架</button>') : '') +
+        (A.can('content.edit') ? '<button class="btn sm danger" data-act="del" data-id="' + esc(x.id) + '">删除</button>' : '') + '</td></tr>';
+    }).join('') || '<tr><td colspan="6" class="empty">暂无内容</td></tr>';
+  }
+
+  function edit(old) {
+    if (!A.guard('content.edit', old ? '编辑内容 ' + old.id : '新增内容')) return;
+    var x = old ? U.clone(old) : { id: '', title: '', category: YS.contentCategories[0], type: '图文', summary: '', body: '', video: '', status: 'draft', author: YS.auth.user().name };
+    YS.ui.modal({
+      title: old ? '编辑内容' : '新增内容', wide: true, sticky: true,
+      html: '<div id="cerr"></div><div class="form-grid">' +
+        '<label class="field full"><span>标题<b class="req">*</b></span><input type="text" id="c-title" value="' + esc(x.title) + '"></label>' +
+        '<label class="field"><span>栏目</span><select id="c-cat">' + YS.contentCategories.map(function (c) { return '<option' + (c === x.category ? ' selected' : '') + '>' + c + '</option>'; }).join('') + '</select></label>' +
+        '<label class="field"><span>类型</span><select id="c-type"><option' + (x.type === '图文' ? ' selected' : '') + '>图文</option><option' + (x.type === '视频' ? ' selected' : '') + '>视频</option></select></label>' +
+        '<label class="field full"><span>摘要</span><input type="text" id="c-sum" value="' + esc(x.summary) + '"></label>' +
+        '<label class="field full"><span>视频地址（类型为视频时填写；MP4 链接或相对路径）</span><input type="text" id="c-video" value="' + esc(x.video) + '"></label>' +
+        '<label class="field full"><span>正文<b class="req">*</b></span><textarea id="c-body" style="min-height:220px">' + esc(x.body) + '</textarea><span class="hint">段落之间空一行；以“&gt;”开头的段落显示为引文（如古籍原文）。</span></label>' +
+        '<label class="field"><span>作者</span><input type="text" id="c-author" value="' + esc(x.author) + '"></label></div>',
+      actions: [{ text: '取消' }, { text: '保存', cls: 'primary', onClick: function (c, body) {
+        function v(id) { return body.querySelector('#' + id).value.trim(); }
+        var err = [];
+        x.title = v('c-title'); x.category = v('c-cat'); x.type = v('c-type'); x.summary = v('c-sum'); x.video = v('c-video'); x.body = v('c-body'); x.author = v('c-author');
+        if (!x.title) err.push('请填写标题');
+        if (!x.body) err.push('请填写正文');
+        if (x.type === '视频' && !x.video) err.push('视频类内容请填写视频地址');
+        if (x.video && /^\s*javascript:/i.test(x.video)) err.push('视频地址不合法');
+        if (err.length) { body.querySelector('#cerr').innerHTML = '<div class="notice danger mb-2">' + err.map(esc).join('<br>') + '</div>'; return false; }
+        if (!x.id) { var max = 0; YS.db.list('contents').forEach(function (k) { var n = parseInt(String(k.id).replace(/\D/g, ''), 10); if (n > max) max = n; }); x.id = 'CT' + ('00' + (max + 1)).slice(-3); }
+        x.updatedAt = Date.now();
+        YS.db.upsert('contents', x);
+        YS.audit.log(old ? '编辑科普内容' : '新增科普内容', x.id + ' ' + x.title, '');
+        YS.ui.toast('已保存' + (x.status !== 'published' ? '（未上架）' : ''), 'ok');
+        render();
+      } }]
+    });
+  }
+
+  document.getElementById('tb').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-act]'); if (!b) return;
+    var x = YS.db.get('contents', b.getAttribute('data-id')); if (!x) return;
+    var act = b.getAttribute('data-act');
+    if (act === 'view') {
+      YS.ui.modal({ title: x.title, wide: true, html: '<p><span class="badge accent">' + esc(x.category) + '</span> ' + esc(x.summary) + '</p>' + (x.video ? '<video controls style="width:100%" src="' + esc(x.video) + '"></video>' : '') +
+        '<div style="white-space:pre-wrap;line-height:1.8">' + esc(x.body) + '</div>', actions: [{ text: '关闭' }] });
+    } else if (act === 'edit') edit(x);
+    else if (act === 'on' || act === 'off') {
+      if (!A.guard('content.publish', (act === 'on' ? '上架 ' : '下架 ') + x.id)) return;
+      x.status = act === 'on' ? 'published' : 'offline'; x.updatedAt = Date.now();
+      YS.db.upsert('contents', x);
+      YS.audit.log(act === 'on' ? '上架科普内容' : '下架科普内容', x.id + ' ' + x.title, '');
+      YS.ui.toast(act === 'on' ? '已上架，用户端可见' : '已下架', 'ok'); render();
+    } else if (act === 'del') {
+      if (!A.guard('content.edit', '删除内容 ' + x.id)) return;
+      YS.ui.confirm('确定删除“' + x.title + '”吗？', '删除', true).then(function (ok) {
+        if (!ok) return;
+        YS.db.remove('contents', x.id);
+        YS.audit.log('删除科普内容', x.id + ' ' + x.title, '');
+        render();
+      });
+    }
+  });
+  document.getElementById('add').onclick = function () { edit(null); };
+  render();
+})();
+</script>
+</body>
+</html>

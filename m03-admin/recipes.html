@@ -1,0 +1,385 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>药膳方管理</title>
+<link rel="stylesheet" href="../assets/css/base.css">
+<link rel="stylesheet" href="../assets/css/admin.css">
+<style>
+  .table td .name { font-weight: 600; }
+  .actions .btn { margin: 2px 2px 2px 0; }
+  .chips.terms .chip { min-height: 24px; padding: 1px 8px; font-size: 12px; }
+  #ferr { margin-bottom: 10px; }
+</style>
+</head>
+<body>
+<div id="adm-content" class="hidden">
+  <div class="toolbar">
+    <input type="search" id="q" placeholder="搜索方名、组成、功效…">
+    <select id="fs"><option value="">全部状态</option></select>
+    <select id="fb"><option value="">全部古籍</option></select>
+    <select id="fy"><option value="">药食同源：不限</option><option value="ok">合规</option><option value="bad">含目录外药材</option></select>
+    <span class="spacer"></span>
+    <button class="btn primary" id="add">＋ 新增药膳方</button>
+    <button class="btn" id="imp">批量导入</button>
+    <button class="btn" id="exp">导出 CSV</button>
+    <a class="btn" href="../m01-database/template/recipe-import-template.csv" download>下载模板</a>
+  </div>
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th>编号</th><th>方名</th><th>出处</th><th>适用体质</th><th>状态</th><th>药食同源</th><th>打样</th><th>版本 / 更新</th><th>操作</th></tr></thead>
+    <tbody id="tb"></tbody>
+  </table></div>
+  <div id="pager"></div>
+  <p class="muted mt-2" style="font-size:13px">流程：录入（草稿）→ 提交审核 → 专家审核通过 → 管理员发布 → 用户端可见。非管理员修改已审核/已发布的方剂后，需重新审核。每次保存自动保留历史版本。</p>
+</div>
+
+<script src="../assets/js/core.js"></script>
+<script src="../assets/js/solar-terms.js"></script>
+<script src="../assets/js/db.js"></script>
+<script src="../m01-database/data/dicts.js"></script>
+<script src="../m01-database/data/yaoshi-106.js"></script>
+<script src="../m01-database/data/recipes.js"></script>
+<script src="../m01-database/model.js"></script>
+<script src="../m06-security/audit.js"></script>
+<script src="../m06-security/auth.js"></script>
+<script src="admin.js"></script>
+<script>
+(function () {
+  'use strict';
+  if (!YS.admin.init({ key: 'recipes', title: '药膳方管理', perm: 'recipe.view' })) return;
+  var U = YS.util, esc = U.esc, M = YS.model, D = YS.dict, A = YS.auth;
+  var page = 1, SIZE = 15;
+
+  // ---------- 工具栏 ----------
+  Object.keys(D.statuses).forEach(function (k) { var o = document.createElement('option'); o.value = k; o.textContent = D.statuses[k].text; document.getElementById('fs').appendChild(o); });
+  U.uniq(YS.db.list('recipes').map(function (r) { return r.source.book; }).concat(D.names('books'))).forEach(function (b) { var o = document.createElement('option'); o.value = o.textContent = b; document.getElementById('fb').appendChild(o); });
+  if (U.qs('status')) document.getElementById('fs').value = U.qs('status');
+  if (!A.can('recipe.edit')) document.getElementById('add').classList.add('hidden');
+  if (!A.can('recipe.import')) document.getElementById('imp').classList.add('hidden');
+  if (!A.can('recipe.export')) document.getElementById('exp').classList.add('hidden');
+  ['q', 'fs', 'fb', 'fy'].forEach(function (id) { document.getElementById(id).addEventListener(id === 'q' ? 'input' : 'change', U.debounce(function () { page = 1; render(); }, 150)); });
+
+  function filtered() {
+    var q = document.getElementById('q').value.trim(), fs = document.getElementById('fs').value, fb = document.getElementById('fb').value, fy = document.getElementById('fy').value;
+    return YS.db.list('recipes').filter(function (r) {
+      if (fs && r.status !== fs) return false;
+      if (fb && r.source.book !== fb) return false;
+      if (fy && (fy === 'ok') !== M.compliance(r).ok) return false;
+      if (q && [r.id, r.name, r.alias, r.efficacy, M.compText(r)].join(' ').indexOf(q) < 0) return false;
+      return true;
+    }).sort(function (a, b) { return (b.updatedAt || 0) - (a.updatedAt || 0) || (a.id < b.id ? -1 : 1); });
+  }
+
+  function actions(r) {
+    var b = [];
+    function btn(act, text, cls) { b.push('<button class="btn sm ' + (cls || '') + '" data-act="' + act + '" data-id="' + esc(r.id) + '">' + text + '</button>'); }
+    btn('view', '查看');
+    if (A.can('recipe.edit')) btn('edit', '编辑');
+    if (A.can('recipe.submit') && (r.status === 'draft' || r.status === 'rejected')) btn('submit', '提交审核', 'primary');
+    if (A.can('recipe.review') && r.status === 'pending') btn('review', '审核', 'primary');
+    if (A.can('recipe.publish') && (r.status === 'approved' || r.status === 'offline')) btn('publish', '发布', 'primary');
+    if (A.can('recipe.publish') && r.status === 'published') btn('offline', '下架');
+    btn('versions', '版本');
+    if (A.can('recipe.delete')) btn('delete', '删除', 'danger');
+    return b.join('');
+  }
+
+  function render() {
+    var rows = filtered();
+    var pages = Math.max(1, Math.ceil(rows.length / SIZE));
+    if (page > pages) page = pages;
+    var slice = rows.slice((page - 1) * SIZE, page * SIZE);
+    document.getElementById('tb').innerHTML = slice.length ? slice.map(function (r) {
+      return '<tr><td class="nowrap">' + esc(r.id) + '</td><td><span class="name">' + esc(r.name) + '</span>' + (r.sample ? ' <span class="badge amber">示例</span>' : '') + '<div class="muted" style="font-size:12px">' + esc(r.efficacy) + '</div></td>' +
+        '<td class="nowrap">' + esc('《' + r.source.book + '》') + '</td><td style="font-size:13px">' + esc(r.constitutions.join('、')) + '</td>' +
+        '<td class="nowrap">' + M.statusBadge(r.status) + '</td><td class="nowrap">' + M.yaoshiBadge(r) + '</td>' +
+        '<td class="nowrap">' + (r.standardized ? '<span class="badge green">已完成</span>' : '<span class="muted">—</span>') + '</td>' +
+        '<td class="nowrap" style="font-size:13px">V' + (r.version || 1) + '<div class="muted">' + U.fmtDate(r.updatedAt) + '</div></td><td class="actions">' + actions(r) + '</td></tr>';
+    }).join('') : '<tr><td colspan="9" class="empty">没有符合条件的药膳方</td></tr>';
+    YS.admin.pager(document.getElementById('pager'), rows.length, page, SIZE, function (p) { page = p; render(); });
+  }
+
+  // ---------- 编辑表单 ----------
+  var chipSets = {};
+  function compRow(c) {
+    c = c || { name: '', std: '', amount: '', type: '药' };
+    return '<div class="comp-row"><input type="text" data-k="name" placeholder="名称（如 生地黄汁）" value="' + esc(c.name) + '">' +
+      '<input type="text" data-k="std" placeholder="标准名（可空，如 地黄）" value="' + esc(c.std) + '">' +
+      '<input type="text" data-k="amount" placeholder="用量" value="' + esc(c.amount) + '">' +
+      '<select data-k="type">' + D.compTypes.map(function (t) { return '<option value="' + t.value + '"' + (c.type === t.value ? ' selected' : '') + '>' + t.text + '</option>'; }).join('') + '</select>' +
+      '<button type="button" class="btn sm danger" data-rm="1" aria-label="删除">✕</button></div>';
+  }
+  function resRow(x) {
+    x = x || { title: '', authors: '', journal: '', year: '', url: '' };
+    return '<div class="res-row"><input type="text" data-k="title" placeholder="题名" value="' + esc(x.title) + '"><input type="text" data-k="authors" placeholder="作者" value="' + esc(x.authors) + '">' +
+      '<input type="text" data-k="journal" placeholder="刊名" value="' + esc(x.journal) + '"><input type="text" data-k="year" placeholder="年份" value="' + esc(x.year) + '">' +
+      '<input type="url" data-k="url" placeholder="链接" value="' + esc(x.url) + '"><button type="button" class="btn sm danger" data-rm="1" aria-label="删除">✕</button></div>';
+  }
+  function formHtml(r) {
+    function sel(id, list, v, empty) { return '<select id="' + id + '">' + (empty ? '<option value="">' + empty + '</option>' : '') + list.map(function (x) { return '<option' + (x === v ? ' selected' : '') + '>' + esc(x) + '</option>'; }).join('') + '</select>'; }
+    var isAdmin = YS.auth.user().role === 'admin';
+    return '<div id="ferr"></div>' +
+      '<div class="form-sec"><h4>基本信息与出处</h4><div class="form-grid">' +
+      '<label class="field"><span>方名<b class="req">*</b></span><input type="text" id="f-name" value="' + esc(r.name) + '"></label>' +
+      '<label class="field"><span>别名</span><input type="text" id="f-alias" value="' + esc(r.alias) + '"></label>' +
+      '<label class="field"><span>古籍名称<b class="req">*</b></span><input type="text" id="f-book" list="books" value="' + esc(r.source.book) + '"><datalist id="books">' + D.names('books').map(function (b) { return '<option value="' + b + '">'; }).join('') + '</datalist></label>' +
+      '<label class="field"><span>卷次篇目</span><input type="text" id="f-chapter" value="' + esc(r.source.chapter) + '"></label>' +
+      '<label class="field full"><span>原文摘录</span><textarea id="f-original">' + esc(r.source.original) + '</textarea></label>' +
+      '<label class="field full"><span>数据来源（版本、页码、链接）</span><input type="text" id="f-dataSource" value="' + esc(r.dataSource) + '"></label>' +
+      '</div></div>' +
+      '<div class="form-sec"><h4>组成<b class="req">*</b> <span class="muted" style="font-weight:400" id="comp-chk"></span></h4><div id="comp">' + (r.composition.length ? r.composition.map(compRow).join('') : compRow()) + '</div>' +
+      '<button type="button" class="btn sm" id="comp-add">＋ 添加一项</button><div class="hint">类型为“药材”的须在 106 种药食同源目录内，否则不会进入推荐；名称与目录不一致时请填写标准名。</div></div>' +
+      '<div class="form-sec"><h4>功效与适宜</h4><div class="form-grid">' +
+      '<label class="field"><span>功效<b class="req">*</b></span><input type="text" id="f-efficacy" value="' + esc(r.efficacy) + '"></label>' +
+      '<label class="field"><span>主治病症</span><input type="text" id="f-indication" value="' + esc(r.indication) + '"></label>' +
+      '<div class="field full"><span class="field-label">适用体质</span><div id="c-constitutions" class="chips sm"></div></div>' +
+      '<div class="field"><span class="field-label">调补脏腑</span><div id="c-organs" class="chips sm"></div></div>' +
+      '<div class="field"><span class="field-label">适用年龄</span><div id="c-ages" class="chips sm"></div></div>' +
+      '<div class="field"><span class="field-label">适用季节</span><div id="c-seasons" class="chips sm"></div></div>' +
+      '<div class="field"><span class="field-label">适用餐次<b class="req">*</b></span><div id="c-meals" class="chips sm"></div></div>' +
+      '<div class="field full"><span class="field-label">适用节气（可不选，表示所选季节的全部节气）</span><div id="c-terms" class="chips sm terms"></div></div>' +
+      '</div></div>' +
+      '<div class="form-sec"><h4>制作与注意事项</h4><div class="form-grid">' +
+      '<label class="field full"><span>制作方法</span><textarea id="f-method">' + esc(r.method) + '</textarea></label>' +
+      '<label class="field full"><span>注意事项（禁忌、慎用人群）</span><textarea id="f-cautions">' + esc(r.cautions) + '</textarea></label>' +
+      '</div></div>' +
+      '<div class="form-sec"><h4>现代研究</h4><div id="res">' + (r.research || []).map(resRow).join('') + '</div><button type="button" class="btn sm" id="res-add">＋ 添加文献</button>' +
+      '<label class="field mt-1"><span>研究摘要</span><textarea id="f-researchNote">' + esc(r.researchNote) + '</textarea></label></div>' +
+      '<div class="form-sec"><h4>推荐算法标签</h4><div class="form-grid">' +
+      '<label class="field"><span>膳食类别</span>' + sel('f-category', D.categories, r.category, '请选择') + '</label>' +
+      '<label class="field"><span>四气</span>' + sel('f-nature', D.natures, r.nature, '请选择') + '</label>' +
+      '<div class="field"><span class="field-label">五味</span><div id="c-tastes" class="chips sm"></div></div>' +
+      '<div class="field"><span class="field-label">五色</span><div id="c-colors" class="chips sm"></div></div>' +
+      '<div class="field full"><span class="field-label">功效标签</span><div id="c-tags" class="chips sm"></div></div>' +
+      '</div></div>' +
+      '<div class="form-sec"><h4>标准化打样（40 方）</h4><label class="row tight"><input type="checkbox" id="f-standardized"' + (r.standardized ? ' checked' : '') + '> 已完成标准化打样</label>' +
+      '<label class="field mt-1"><span>打样记录（日期、工艺参数、照片编号等）</span><input type="text" id="f-sampleRecord" value="' + esc(r.sampleRecord) + '"></label>' +
+      (isAdmin ? '<label class="row tight mt-1"><input type="checkbox" id="f-sample"' + (r.sample ? ' checked' : '') + '> 示例数据（未经正式审核）</label>' : '') + '</div>';
+  }
+  function initForm(body, r) {
+    chipSets = {};
+    [['constitutions', D.names('constitutions')], ['organs', D.names('organs')], ['ages', D.names('ages')], ['seasons', D.seasons], ['meals', D.meals.map(function (m) { return { value: m, text: D.mealNames[m] }; })],
+      ['terms', YS.solar.ORDER], ['tastes', D.tastes], ['colors', D.colors], ['tags', D.tags]].forEach(function (x) {
+      chipSets[x[0]] = YS.ui.chips(body.querySelector('#c-' + x[0]), x[1], r[x[0]] || [], true);
+    });
+    var comp = body.querySelector('#comp');
+    function chk() {
+      var cp = M.compliance({ composition: collectRows(comp, ['name', 'std', 'amount', 'type']) });
+      body.querySelector('#comp-chk').innerHTML = cp.ok ? '<span class="badge green">✓ ' + esc(cp.text) + '</span>' : '<span class="badge red">✕ ' + esc(cp.text) + '</span>';
+    }
+    comp.addEventListener('input', chk); comp.addEventListener('change', chk);
+    body.querySelector('#comp-add').onclick = function () { comp.insertAdjacentHTML('beforeend', compRow()); };
+    body.querySelector('#res-add').onclick = function () { body.querySelector('#res').insertAdjacentHTML('beforeend', resRow()); };
+    body.addEventListener('click', function (e) { var b = e.target.closest('[data-rm]'); if (b) { b.parentNode.remove(); chk(); } });
+    chk();
+  }
+  function collectRows(el, keys) {
+    return Array.prototype.map.call(el.children, function (row) {
+      var o = {};
+      keys.forEach(function (k) { var i = row.querySelector('[data-k="' + k + '"]'); o[k] = i ? i.value.trim() : ''; });
+      return o;
+    }).filter(function (o) { return o[keys[0]]; });
+  }
+  function collect(body, base) {
+    var r = U.clone(base);
+    function v(id) { var el = body.querySelector('#f-' + id); return el ? el.value.trim() : ''; }
+    r.name = v('name'); r.alias = v('alias');
+    r.source = { book: v('book').replace(/[《》]/g, ''), chapter: v('chapter'), original: v('original'), edition: (base.source || {}).edition || '' };
+    r.dataSource = v('dataSource'); r.efficacy = v('efficacy'); r.indication = v('indication');
+    r.method = v('method'); r.cautions = v('cautions'); r.researchNote = v('researchNote');
+    r.category = v('category'); r.nature = v('nature');
+    r.composition = collectRows(body.querySelector('#comp'), ['name', 'std', 'amount', 'type']);
+    r.research = collectRows(body.querySelector('#res'), ['title', 'authors', 'journal', 'year', 'url']);
+    Object.keys(chipSets).forEach(function (k) { r[k] = chipSets[k].get(); });
+    r.terms = YS.solar.ORDER.filter(function (t) { return r.terms.indexOf(t) >= 0; });
+    r.standardized = body.querySelector('#f-standardized').checked;
+    r.sampleRecord = v('sampleRecord');
+    var s = body.querySelector('#f-sample'); if (s) r.sample = s.checked;
+    return r;
+  }
+
+  function openEdit(old) {
+    if (!A.guard('recipe.edit', old ? '编辑 ' + old.id : '新增药膳方')) return;
+    var base = old ? U.clone(old) : M.blank();
+    YS.ui.modal({
+      title: old ? '编辑：' + old.name + '（' + old.id + '）' : '新增药膳方', wide: true, sticky: true, html: formHtml(base),
+      onOpen: function (body) { initForm(body, base); },
+      actions: [{ text: '取消' }, { text: '保存', cls: 'primary', onClick: function (close, body) {
+        var r = collect(body, base);
+        var errs = M.validate(r);
+        if (errs.length) {
+          body.querySelector('#ferr').innerHTML = '<div class="notice danger"><b>请修正以下问题：</b><br>' + errs.map(esc).join('<br>') + '</div>';
+          body.scrollTop = 0;
+          return false;
+        }
+        var u = YS.auth.user(), now = Date.now(), note = '';
+        if (!old) {
+          r.id = M.nextId(); r.status = 'draft'; r.version = 1; r.createdBy = u.name; r.createdAt = now; r.sample = false;
+        } else {
+          YS.db.addVersion(old, '修改前版本', u.name);
+          r.version = (old.version || 1) + 1;
+          if (u.role !== 'admin' && ['approved', 'published', 'offline'].indexOf(old.status) >= 0) {
+            r.status = 'pending'; r.reviewer = ''; r.reviewedAt = null; note = '，内容变更后状态改为待审核';
+          }
+        }
+        r.updatedAt = now; r.updatedBy = u.name;
+        YS.db.upsert('recipes', r);
+        YS.audit.log(old ? '编辑药膳方' : '新增药膳方', r.id + ' ' + r.name, old ? '保存为 V' + r.version + note : '新建草稿');
+        YS.ui.toast('已保存' + note, 'ok');
+        render();
+      } }]
+    });
+  }
+
+  function setStatus(r, status, action, detail, extra) {
+    var x = YS.db.get('recipes', r.id);
+    x.status = status;
+    if (extra) Object.keys(extra).forEach(function (k) { x[k] = extra[k]; });
+    x.updatedAt = Date.now();
+    YS.db.upsert('recipes', x);
+    YS.audit.log(action, x.id + ' ' + x.name, detail || '');
+    render();
+  }
+
+  function view(r) {
+    YS.ui.modal({
+      title: r.name + '（' + r.id + '）', wide: true,
+      html: M.detailHtml(r, { workflow: true }) + (r.reviewNote ? '<div class="notice info mt-2">审核意见：' + esc(r.reviewNote) + '</div>' : ''),
+      actions: [{ text: '用户端预览', onClick: function () { window.open('../m02-user/detail.html?id=' + encodeURIComponent(r.id) + '&preview=1'); return false; } }, { text: '关闭', cls: 'primary' }]
+    });
+  }
+
+  function review(r) {
+    if (!A.guard('recipe.review', '审核 ' + r.id)) return;
+    YS.ui.modal({
+      title: '审核：' + r.name, wide: true, sticky: true,
+      html: M.detailHtml(r, { workflow: true }) + '<label class="field mt-2"><span>审核意见（驳回时必填）</span><textarea id="rv-note"></textarea></label>',
+      actions: [
+        { text: '取消' },
+        { text: '驳回', cls: 'danger', onClick: function (c, body) {
+          var note = body.querySelector('#rv-note').value.trim();
+          if (!note) { YS.ui.toast('驳回请填写审核意见', 'err'); return false; }
+          setStatus(r, 'rejected', '审核驳回', note, { reviewNote: note, reviewer: YS.auth.user().name, reviewedAt: Date.now() });
+          YS.ui.toast('已驳回');
+        } },
+        { text: '审核通过', cls: 'primary', onClick: function (c, body) {
+          var note = body.querySelector('#rv-note').value.trim();
+          setStatus(r, 'approved', '审核通过', note, { reviewNote: note, reviewer: YS.auth.user().name, reviewedAt: Date.now() });
+          YS.ui.toast('审核通过，待管理员发布', 'ok');
+        } }
+      ]
+    });
+  }
+
+  function versions(r) {
+    var list = YS.db.versions(r.id);
+    YS.ui.modal({
+      title: '历史版本：' + r.name + '（当前 V' + (r.version || 1) + '）', wide: true,
+      html: list.length ? '<div class="table-wrap"><table class="table"><thead><tr><th>版本</th><th>保存时间</th><th>操作人</th><th>说明</th><th>主要内容</th><th></th></tr></thead><tbody>' + list.map(function (v, i) {
+        return '<tr><td>V' + v.version + '</td><td class="nowrap">' + U.fmtTime(v.time) + '</td><td>' + esc(v.user) + '</td><td>' + esc(v.note) + '</td><td style="font-size:13px">' + esc(v.data.name + '：' + M.compText(v.data)) + '<br><span class="muted">' + esc(v.data.efficacy) + '</span></td>' +
+          '<td>' + (A.can('recipe.edit') ? '<button class="btn sm" data-restore="' + i + '">恢复此版本</button>' : '') + '</td></tr>';
+      }).join('') + '</tbody></table></div>' : '<div class="empty">暂无历史版本（首次保存后生成）</div>',
+      onOpen: function (body, close) {
+        body.addEventListener('click', function (e) {
+          var b = e.target.closest('[data-restore]'); if (!b) return;
+          if (!A.guard('recipe.edit', '恢复版本 ' + r.id)) return;
+          var v = list[Number(b.getAttribute('data-restore'))];
+          YS.ui.confirm('将以 V' + v.version + ' 的内容覆盖当前内容（当前内容会另存为历史版本），确定吗？').then(function (ok) {
+            if (!ok) return;
+            var cur = YS.db.get('recipes', r.id), u = YS.auth.user();
+            YS.db.addVersion(cur, '恢复前版本', u.name);
+            var x = U.clone(v.data);
+            x.version = (cur.version || 1) + 1; x.updatedAt = Date.now(); x.updatedBy = u.name;
+            x.status = u.role === 'admin' ? cur.status : 'pending';
+            YS.db.upsert('recipes', x);
+            YS.audit.log('恢复历史版本', r.id + ' ' + r.name, '从 V' + v.version + ' 恢复，保存为 V' + x.version);
+            YS.ui.toast('已恢复', 'ok'); close(); render();
+          });
+        });
+      },
+      actions: [{ text: '关闭' }]
+    });
+  }
+
+  document.getElementById('tb').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-act]'); if (!b) return;
+    var r = YS.db.get('recipes', b.getAttribute('data-id')); if (!r) return;
+    var act = b.getAttribute('data-act');
+    if (act === 'view') view(r);
+    else if (act === 'edit') openEdit(r);
+    else if (act === 'review') review(r);
+    else if (act === 'versions') versions(r);
+    else if (act === 'submit') { if (A.guard('recipe.submit', '提交审核 ' + r.id)) { setStatus(r, 'pending', '提交审核', ''); YS.ui.toast('已提交审核', 'ok'); } }
+    else if (act === 'publish') { if (A.guard('recipe.publish', '发布 ' + r.id)) YS.ui.confirm('发布后用户端即可检索和推荐“' + r.name + '”，确定发布吗？', '发布').then(function (ok) { if (ok) { setStatus(r, 'published', '发布药膳方', ''); YS.ui.toast('已发布', 'ok'); } }); }
+    else if (act === 'offline') { if (A.guard('recipe.publish', '下架 ' + r.id)) YS.ui.confirm('下架后用户端将不再显示“' + r.name + '”，确定吗？', '下架').then(function (ok) { if (ok) { setStatus(r, 'offline', '下架药膳方', ''); YS.ui.toast('已下架'); } }); }
+    else if (act === 'delete') {
+      if (!A.guard('recipe.delete', '删除 ' + r.id)) return;
+      YS.ui.confirm('确定删除“' + r.name + '”（' + r.id + '）吗？删除前可在“数据备份”中导出备份。', '删除', true).then(function (ok) {
+        if (!ok) return;
+        YS.db.addVersion(r, '删除前版本', YS.auth.user().name);
+        YS.db.remove('recipes', r.id);
+        YS.audit.log('删除药膳方', r.id + ' ' + r.name, '');
+        YS.ui.toast('已删除'); render();
+      });
+    }
+  });
+  document.getElementById('add').onclick = function () { openEdit(null); };
+
+  // ---------- 导出 ----------
+  document.getElementById('exp').onclick = function () {
+    if (!A.guard('recipe.export', '导出药膳方')) return;
+    var rows = filtered();
+    U.download('经典药膳方数据库_' + U.fmtDate() + '.csv', M.toCsv(rows), 'text/csv');
+    YS.audit.log('导出数据', '药膳方', '导出 ' + rows.length + ' 首（CSV）');
+  };
+
+  // ---------- 批量导入 ----------
+  document.getElementById('imp').onclick = function () {
+    if (!A.guard('recipe.import', '批量导入')) return;
+    var parsed = null;
+    YS.ui.modal({
+      title: '批量导入药膳方', wide: true, sticky: true,
+      html: '<div class="notice info mb-2">请使用<a href="../m01-database/template/recipe-import-template.csv" download>录入模板</a>（CSV，UTF-8）。导入成功的方剂为“待审核”状态；编号已存在的视为更新，并保留历史版本。</div>' +
+        '<label class="field"><span>选择 CSV 文件</span><input type="file" id="imp-file" accept=".csv,text/csv"></label>' +
+        '<details class="mt-1"><summary style="cursor:pointer;font-size:14px;color:var(--c-primary)">或粘贴 CSV 内容</summary><textarea id="imp-text" style="min-height:120px;font-family:monospace;font-size:12px"></textarea><button class="btn sm mt-1" id="imp-parse" type="button">解析</button></details>' +
+        '<div id="imp-out" class="mt-2"></div>',
+      onOpen: function (body) {
+        function show(text) {
+          parsed = M.fromCsv(text);
+          body.querySelector('#imp-out').innerHTML = '<div class="notice ' + (parsed.errors.length ? 'warn' : 'ok') + '">可导入 <b>' + parsed.ok.length + '</b> 首；有问题 <b>' + parsed.errors.length + '</b> 行' + (parsed.errors.length ? '（问题行不会导入，请修改后重新导入）' : '') + '</div>' +
+            (parsed.ok.length ? '<p class="mt-1" style="font-size:13px">将导入：' + esc(parsed.ok.map(function (r) { return r.name; }).join('、')) + '</p>' : '') +
+            (parsed.errors.length ? '<div class="table-wrap mt-1"><table class="table"><thead><tr><th>行号</th><th>方名</th><th>问题</th></tr></thead><tbody>' + parsed.errors.map(function (e) {
+              return '<tr><td>' + e.row + '</td><td>' + esc(e.name || '') + '</td><td style="font-size:13px">' + e.msgs.map(esc).join('<br>') + '</td></tr>';
+            }).join('') + '</tbody></table></div>' : '');
+        }
+        body.querySelector('#imp-file').onchange = function () {
+          var f = this.files[0]; if (!f) return;
+          var rd = new FileReader();
+          rd.onload = function () { show(String(rd.result)); };
+          rd.readAsText(f, 'utf-8');
+        };
+        body.querySelector('#imp-parse').onclick = function () { show(body.querySelector('#imp-text').value); };
+      },
+      actions: [{ text: '取消' }, { text: '确认导入', cls: 'primary', onClick: function () {
+        if (!parsed || !parsed.ok.length) { YS.ui.toast('没有可导入的数据', 'err'); return false; }
+        var u = YS.auth.user(), now = Date.now(), added = 0, updated = 0;
+        parsed.ok.forEach(function (r) {
+          var old = r.id ? YS.db.get('recipes', r.id) : null;
+          if (old) { YS.db.addVersion(old, '导入覆盖前版本', u.name); r.version = (old.version || 1) + 1; r.createdBy = old.createdBy; r.createdAt = old.createdAt; updated++; }
+          else { r.id = M.nextId(); r.version = 1; r.createdBy = u.name; r.createdAt = now; added++; }
+          r.status = 'pending'; r.sample = false; r.updatedAt = now; r.updatedBy = u.name;
+          YS.db.upsert('recipes', r);
+        });
+        YS.audit.log('批量导入', '药膳方', '新增 ' + added + ' 首，更新 ' + updated + ' 首，跳过问题行 ' + parsed.errors.length + ' 行');
+        YS.ui.toast('导入完成：新增 ' + added + '，更新 ' + updated, 'ok');
+        render();
+      } }]
+    });
+  };
+
+  render();
+})();
+</script>
+</body>
+</html>

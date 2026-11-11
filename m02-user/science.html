@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#2f5d50">
+<title>药膳科普</title>
+<link rel="stylesheet" href="../assets/css/base.css">
+<link rel="stylesheet" href="../assets/css/user.css">
+<style>
+  .u-main { max-width: 760px; }
+  .art-item { display: block; color: var(--c-text); margin-bottom: 10px; }
+  .art-item:hover { text-decoration: none; border-color: var(--c-primary-100); }
+  .art-item h3 { margin: 6px 0 4px; }
+  .art-title { font-family: var(--font-serif); font-size: 24px; margin: 6px 0; }
+  video { width: 100%; border-radius: var(--radius); background: #000; margin-bottom: 14px; }
+</style>
+</head>
+<body>
+<main class="u-main" id="app"></main>
+
+<script src="../assets/js/core.js"></script>
+<script src="../assets/js/solar-terms.js"></script>
+<script src="../assets/js/db.js"></script>
+<script src="../assets/lib/qrcode.js"></script>
+<script src="data/contents.js"></script>
+<script src="user.js"></script>
+<script>
+(function () {
+  'use strict';
+  var U = YS.util, esc = U.esc;
+  var id = U.qs('id');
+  YS.user.init({ title: '药膳科普', back: id ? 'science.html' : false, tab: 'book', page: id ? '科普文章' : '科普' });
+  var app = document.getElementById('app');
+  var all = YS.db.list('contents').filter(function (x) { return x.status === 'published'; });
+
+  function bodyHtml(text) {
+    return String(text || '').split(/\n\s*\n/).map(function (para) {
+      para = para.trim();
+      if (!para) return '';
+      if (para.charAt(0) === '>') return '<blockquote>' + esc(para.replace(/^>\s*/, '')).replace(/\n/g, '<br>') + '</blockquote>';
+      return '<p>' + esc(para).replace(/\n/g, '<br>') + '</p>';
+    }).join('');
+  }
+
+  if (id) {
+    var a = all.filter(function (x) { return x.id === id; })[0];
+    if (!a) { app.innerHTML = '<div class="card empty">文章不存在或已下架。<br><a href="science.html">返回列表</a></div>'; return; }
+    document.title = a.title + ' · 药膳科普';
+    app.innerHTML = '<article class="card">' +
+      '<span class="badge accent">' + esc(a.category) + '</span> <span class="badge">' + esc(a.type) + '</span>' +
+      '<h1 class="art-title">' + esc(a.title) + '</h1><p class="muted" style="font-size:13px">' + esc(a.author || '') + ' · ' + U.fmtDate(a.updatedAt) + '</p>' +
+      (a.video ? '<video controls preload="metadata" src="' + esc(a.video) + '"></video>' : '') +
+      '<div class="article">' + bodyHtml(a.body) + '</div></article>' +
+      '<div class="grid grid-2 mt-2"><button class="btn lg" id="share">分享</button><a class="btn primary lg" href="recommend.html">查看药膳推荐</a></div>';
+    document.getElementById('share').onclick = function () { YS.ui.share(a.title, location.href, a.summary); };
+    return;
+  }
+
+  var cats = ['全部'].concat(YS.contentCategories);
+  app.innerHTML = '<div id="cats" class="chips sm mb-2"></div><div id="list"></div>';
+  function render(cat) {
+    var rows = all.filter(function (x) { return !cat || cat === '全部' || x.category === cat; });
+    document.getElementById('list').innerHTML = rows.length ? rows.map(function (a) {
+      return '<a class="card art-item" href="science.html?id=' + encodeURIComponent(a.id) + '"><span class="badge accent">' + esc(a.category) + '</span>' +
+        (a.type === '视频' ? ' <span class="badge blue">▶ 视频</span>' : '') +
+        '<h3>' + esc(a.title) + '</h3><div class="muted" style="font-size:14px">' + esc(a.summary) + '</div></a>';
+    }).join('') : '<div class="card empty">该栏目暂无内容</div>';
+  }
+  YS.ui.chips(document.getElementById('cats'), cats, ['全部'], false, function (v) { render(v[0]); }, true);
+  render('全部');
+})();
+</script>
+</body>
+</html>

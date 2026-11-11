@@ -1,0 +1,76 @@
+/* =========================================================================
+   M02 用户端样式（手机优先，PC 自适应）
+   ========================================================================= */
+body.u { padding-bottom: calc(68px + env(safe-area-inset-bottom)); }
+.u-head { position: sticky; top: 0; z-index: 50; background: var(--c-primary); color: #fff; }
+.u-head .in { max-width: 960px; margin: 0 auto; display: flex; align-items: center; gap: 8px; min-height: 52px; padding: 0 12px; }
+.u-head h1 { flex: 1; margin: 0; font-size: 17px; color: #fff; font-weight: 600; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.u-head .side { width: 64px; display: flex; }
+.u-head .side.r { justify-content: flex-end; }
+.u-head a, .u-head button.hb { color: #fff; background: none; border: 0; font: inherit; font-size: 15px; padding: 6px 4px; cursor: pointer; }
+.u-main { max-width: 960px; margin: 0 auto; padding: 14px 14px 24px; }
+@media (min-width: 720px) { .u-main { padding: 22px 20px 32px; } }
+
+.u-tabbar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 60;
+  background: var(--c-surface); border-top: 1px solid var(--c-border);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.u-tabbar .in { max-width: 960px; margin: 0 auto; display: grid; grid-template-columns: repeat(4, 1fr); }
+.u-tabbar a { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 7px 0 6px; font-size: 12px; color: var(--c-text-3); text-decoration: none; }
+.u-tabbar a svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.u-tabbar a.on { color: var(--c-primary); font-weight: 600; }
+
+/* 节气卡 */
+.term-card { position: relative; overflow: hidden; border-radius: var(--radius-l); padding: 18px; color: #fff; background: linear-gradient(135deg, #2f5d50, #3f7f6a); box-shadow: var(--shadow-2); }
+.term-card .term { font-family: var(--font-serif); font-size: 34px; font-weight: 700; letter-spacing: 4px; line-height: 1.2; }
+.term-card .date { font-size: 13px; opacity: .85; }
+.term-card .tip { margin-top: 8px; font-size: 14px; opacity: .95; }
+.term-card .seal { position: absolute; right: 14px; top: 14px; width: 56px; height: 56px; border: 2px solid rgba(243, 217, 181, .7); border-radius: 8px; display: grid; place-items: center; font-family: var(--font-serif); font-size: 26px; color: #f3d9b5; }
+.term-card a.go { display: inline-block; margin-top: 12px; padding: 6px 14px; border-radius: 999px; background: rgba(255,255,255,.16); color: #fff; font-size: 14px; }
+
+/* 入口宫格 */
+.entry-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+@media (min-width: 720px) { .entry-grid { grid-template-columns: repeat(6, 1fr); } }
+.entry-grid a { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 14px 4px; background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--radius); color: var(--c-text); font-size: 14px; text-decoration: none; }
+.entry-grid a:hover { border-color: var(--c-primary-100); }
+.entry-grid .ic { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; font-family: var(--font-serif); font-size: 19px; color: #fff; background: var(--c-primary); }
+.entry-grid .ic.a { background: var(--c-accent); }
+
+/* 餐次卡 */
+.meal-grid { display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 860px) { .meal-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.meal-card { display: flex; flex-direction: column; gap: 8px; }
+.meal-card .meal { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--c-accent); font-weight: 600; }
+.meal-card .meal::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--c-accent); }
+.meal-card .name { font-family: var(--font-serif); font-size: 20px; font-weight: 700; }
+.meal-card .name a { color: var(--c-text); }
+.meal-card details summary { cursor: pointer; font-size: 14px; color: var(--c-primary); }
+.meal-card details p { font-size: 14px; color: var(--c-text-2); margin: 6px 0 0; }
+.why { display: flex; flex-wrap: wrap; gap: 4px; }
+.why span { font-size: 12px; padding: 0 6px; border-radius: 4px; background: var(--c-primary-050); color: var(--c-primary-600); line-height: 20px; }
+.alt { font-size: 13px; color: var(--c-text-3); }
+.alt button { border: 0; background: none; color: var(--c-primary); font: inherit; font-size: 13px; cursor: pointer; padding: 0 2px; text-decoration: underline; text-underline-offset: 2px; }
+.fav-btn { border: 1px solid var(--c-border-strong); background: var(--c-surface); border-radius: 999px; padding: 3px 10px; font: inherit; font-size: 13px; cursor: pointer; color: var(--c-text-2); }
+.fav-btn.on { color: var(--c-accent); border-color: var(--c-accent); background: var(--c-accent-050); }
+
+/* 条件面板 */
+.cond { display: grid; gap: 12px; }
+.cond .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (min-width: 860px) { .cond { grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: end; } .cond .wide { grid-column: span 2; } .cond .two { grid-column: span 2; } }
+
+/* 问卷 */
+.q-progress { height: 6px; background: var(--c-primary-050); border-radius: 3px; overflow: hidden; }
+.q-progress i { display: block; height: 100%; background: var(--c-primary); transition: width .2s; }
+.q-text { font-size: 19px; font-weight: 600; line-height: 1.5; margin: 18px 0 16px; min-height: 58px; }
+.q-opts { display: grid; gap: 10px; }
+.q-opt { display: flex; justify-content: space-between; align-items: center; min-height: 50px; padding: 10px 16px; border: 1px solid var(--c-border-strong); border-radius: var(--radius); background: var(--c-surface); font: inherit; font-size: 16px; cursor: pointer; text-align: left; }
+.q-opt small { color: var(--c-text-3); }
+.q-opt:hover { border-color: var(--c-primary); }
+.q-opt.on { border-color: var(--c-primary); background: var(--c-primary-050); color: var(--c-primary-600); font-weight: 600; }
+.result-big { font-family: var(--font-serif); font-size: 36px; font-weight: 700; color: var(--c-primary); letter-spacing: 3px; }
+
+.disclaimer { font-size: 12px; color: var(--c-text-3); text-align: center; margin-top: 18px; line-height: 1.6; }
+.article { font-size: 16px; line-height: 1.85; }
+.article p { margin: 0 0 1em; text-indent: 2em; }
+.article blockquote { margin: 0 0 1em; padding: 8px 14px; border-left: 3px solid var(--c-accent); background: var(--c-accent-050); font-family: var(--font-serif); text-indent: 0; }

@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>数据统计</title>
+<link rel="stylesheet" href="../assets/css/base.css">
+<link rel="stylesheet" href="../assets/css/admin.css">
+</head>
+<body>
+<div id="adm-content" class="hidden">
+  <div class="toolbar">
+    <div id="range" class="chips sm"></div>
+    <span class="spacer"></span>
+    <button class="btn" id="demo">生成演示数据</button>
+    <button class="btn danger" id="clear">清除演示数据</button>
+  </div>
+  <div class="notice info mb-2" id="note"></div>
+  <div class="grid grid-4 mb-2" id="kpi"></div>
+  <div class="grid grid-2 mb-2">
+    <div class="card"><div class="card-title"><h3>每日访问量</h3><span class="muted" style="font-size:12px">次</span></div><div id="c-visit"></div></div>
+    <div class="card"><div class="card-title"><h3>每日推荐次数</h3><span class="muted" style="font-size:12px">次</span></div><div id="c-rec"></div></div>
+  </div>
+  <div class="grid grid-2">
+    <div class="card"><div class="card-title"><h3>热门方剂 Top 10</h3><span class="muted" style="font-size:12px">被推荐为首选的次数</span></div><div id="c-hot"></div></div>
+    <div class="card"><div class="card-title"><h3>推广来源</h3><span class="muted" style="font-size:12px">按扫码来源统计的访问量</span></div><div id="c-src"></div></div>
+  </div>
+</div>
+
+<script src="../assets/js/core.js"></script>
+<script src="../assets/js/solar-terms.js"></script>
+<script src="../assets/js/db.js"></script>
+<script src="../assets/js/charts.js"></script>
+<script src="../m01-database/data/dicts.js"></script>
+<script src="../m01-database/data/yaoshi-106.js"></script>
+<script src="../m01-database/data/recipes.js"></script>
+<script src="../m01-database/model.js"></script>
+<script src="../m04-engine/rules.js"></script>
+<script src="../m04-engine/engine.js"></script>
+<script src="../m06-security/audit.js"></script>
+<script src="../m06-security/auth.js"></script>
+<script src="admin.js"></script>
+<script src="demo-data.js"></script>
+<script>
+(function () {
+  'use strict';
+  if (!YS.admin.init({ key: 'stats', title: '数据统计', perm: 'stats.view' })) return;
+  var U = YS.util, esc = U.esc;
+  var days = 30;
+  if (!YS.auth.can('stats.demo')) { document.getElementById('demo').classList.add('hidden'); document.getElementById('clear').classList.add('hidden'); }
+  YS.ui.chips(document.getElementById('range'), [{ value: '7', text: '近 7 天' }, { value: '30', text: '近 30 天' }, { value: '90', text: '近 90 天' }, { value: '0', text: '全部' }], ['30'], false, function (v) { days = Number(v[0]); render(); }, true);
+
+  function render() {
+    var since = YS.admin.rangeStart(days);
+    var visits = YS.storage.get('visits', []).filter(function (v) { return v.t >= since; });
+    var recs = YS.storage.get('c_reclogs', []).filter(function (r) { return r.t >= since; });
+    var tests = YS.storage.get('c_testlogs', []).filter(function (r) { return r.t >= since; });
+    var hasDemo = YS.demoData.has();
+    document.getElementById('note').innerHTML = hasDemo ? '当前统计<b>包含演示数据</b>（标记为演示，可点击“清除演示数据”删除）。' : '统计来自本机浏览器产生的访问与推荐记录。纯前端版无法汇总其他用户的数据，可生成演示数据查看统计效果。';
+    var uv = U.uniq(visits.map(function (v) { return v.uid; })).length;
+    var avgMs = recs.length ? recs.reduce(function (s, r) { return s + (r.ms || 0); }, 0) / recs.length : 0;
+    document.getElementById('kpi').innerHTML = [
+      ['访问量（次）', visits.length, '访客 ' + uv + ' 人'], ['推荐次数', recs.length, '平均响应 ' + avgMs.toFixed(1) + ' 毫秒'],
+      ['体质测评', tests.length, '次'], ['人均推荐', uv ? (recs.length / uv).toFixed(1) : '0', '次 / 访客']
+    ].map(function (k) { return '<div class="kpi"><div class="label">' + k[0] + '</div><div class="value">' + k[1] + '</div><div class="sub">' + k[2] + '</div></div>'; }).join('');
+
+    var n = days || Math.max(1, Math.ceil((Date.now() - Math.min.apply(null, visits.map(function (v) { return v.t; }).concat(recs.map(function (r) { return r.t; })).concat([Date.now()]))) / 864e5));
+    n = Math.min(n, 120);
+    function byDay(list) {
+      var start = YS.admin.rangeStart(n), out = [];
+      for (var i = 0; i < n; i++) { var d = new Date(start + i * 864e5); out.push({ label: (d.getMonth() + 1) + '-' + d.getDate(), value: 0, t0: start + i * 864e5 }); }
+      list.forEach(function (x) { var i = Math.floor((x.t - start) / 864e5); if (i >= 0 && i < n) out[i].value++; });
+      return out;
+    }
+    YS.charts.columns(document.getElementById('c-visit'), byDay(visits), { unit: ' 次', label: '每日访问量' });
+    YS.charts.columns(document.getElementById('c-rec'), byDay(recs), { unit: ' 次', label: '每日推荐次数' });
+
+    var hot = {};
+    recs.forEach(function (r) { r.picks.forEach(function (p) { hot[p.name] = (hot[p.name] || 0) + 1; }); });
+    var top = Object.keys(hot).sort(function (a, b) { return hot[b] - hot[a]; }).slice(0, 10);
+    YS.charts.hbar(document.getElementById('c-hot'), top.map(function (k, i) { return { label: k, value: hot[k], display: hot[k] + ' 次', highlight: i === 0 }; }), { label: '热门方剂', emptyText: '暂无推荐记录' });
+
+    var src = {};
+    visits.forEach(function (v) { var k = v.src || '直接访问'; src[k] = (src[k] || 0) + 1; });
+    var keys = Object.keys(src).sort(function (a, b) { return src[b] - src[a]; });
+    YS.charts.hbar(document.getElementById('c-src'), keys.map(function (k) { return { label: k, value: src[k], display: src[k] + ' 次', note: Math.round(src[k] / visits.length * 100) + '%' }; }), { label: '推广来源', emptyText: '暂无访问记录' });
+    Array.prototype.forEach.call(document.querySelectorAll('#c-hot .ch-row, #c-src .ch-row'), function (r) { r.style.gridTemplateColumns = '130px minmax(0,1fr) 96px'; });
+  }
+
+  document.getElementById('demo').onclick = function () {
+    if (!YS.auth.guard('stats.demo', '生成演示数据')) return;
+    YS.ui.confirm('将生成 60 天的演示访问与推荐数据（带“演示”标记，可随时清除），确定吗？').then(function (ok) {
+      if (!ok) return;
+      var r = YS.demoData.generate(60);
+      YS.audit.log('生成演示数据', '统计数据', '演示用户 ' + r.users + ' 人');
+      YS.ui.toast('演示数据已生成', 'ok'); render();
+    });
+  };
+  document.getElementById('clear').onclick = function () {
+    if (!YS.auth.guard('stats.demo', '清除演示数据')) return;
+    YS.ui.confirm('将删除所有带“演示”标记的访问、推荐、测评和用户记录，确定吗？', '清除', true).then(function (ok) {
+      if (!ok) return;
+      YS.demoData.clear();
+      YS.audit.log('清除演示数据', '统计数据', '');
+      YS.ui.toast('演示数据已清除'); render();
+    });
+  };
+  render();
+})();
+</script>
+</body>
+</html>

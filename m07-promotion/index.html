@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>推广中心 · M07</title>
+<link rel="stylesheet" href="../assets/css/base.css">
+<style>
+  .promo { display: grid; grid-template-columns: minmax(0, 1fr) 420px; gap: 20px; align-items: start; }
+  @media (max-width: 960px) { .promo { grid-template-columns: minmax(0, 1fr); } }
+  .poster { width: 100%; max-width: 420px; margin: 0 auto; aspect-ratio: 210 / 297; background: linear-gradient(170deg, #2f5d50 0%, #264d42 58%, #f6f3ec 58.1%); border-radius: 12px; box-shadow: var(--shadow-2); color: #fff; padding: 28px 28px 22px; display: flex; flex-direction: column; position: relative; overflow: hidden; }
+  .poster .t1 { font-size: 13px; letter-spacing: 2px; opacity: .8; }
+  .poster .t2 { font-family: var(--font-serif); font-size: 34px; font-weight: 700; letter-spacing: 4px; line-height: 1.25; margin-top: 8px; }
+  .poster .t3 { font-size: 15px; opacity: .9; margin-top: 6px; }
+  .poster .seal { position: absolute; right: 24px; top: 24px; width: 58px; height: 58px; border: 2px solid #f3d9b5; border-radius: 8px; color: #f3d9b5; display: grid; place-items: center; font-family: var(--font-serif); font-size: 15px; line-height: 1.2; text-align: center; }
+  .poster .qr { background: #fff; border-radius: 10px; padding: 10px; width: 52%; margin: 22px auto 0; box-shadow: 0 6px 20px rgba(0,0,0,.18); }
+  .poster .qr svg { display: block; width: 100%; height: auto; }
+  .poster .steps { color: var(--c-text); margin-top: auto; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; text-align: center; font-size: 13px; }
+  .poster .steps b { display: block; width: 26px; height: 26px; margin: 0 auto 4px; border-radius: 50%; background: var(--c-accent); color: #fff; line-height: 26px; font-size: 14px; }
+  .poster .foot { color: var(--c-text-2); text-align: center; font-size: 12px; margin-top: 12px; border-top: 1px dashed var(--c-border-strong); padding-top: 8px; }
+  .poster .site { color: var(--c-primary); font-weight: 600; font-size: 14px; }
+  #tb select { min-width: 96px; width: auto; }
+  @media print {
+    body * { visibility: hidden; }
+    #poster, #poster * { visibility: visible; }
+    #poster { position: fixed; left: 0; top: 0; width: 210mm; max-width: none; height: 297mm; aspect-ratio: auto; padding: 20mm 18mm 14mm; border-radius: 0; box-shadow: none; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    #poster .t1 { font-size: 13pt; } #poster .t2 { font-size: 44pt; } #poster .t3 { font-size: 16pt; }
+    #poster .seal { width: 22mm; height: 22mm; right: 18mm; top: 18mm; font-size: 16pt; }
+    #poster .qr { width: 58%; margin-top: 14mm; padding: 4mm; }
+    #poster .steps { font-size: 14pt; } #poster .steps b { width: 9mm; height: 9mm; line-height: 9mm; font-size: 13pt; }
+    #poster .foot { font-size: 11pt; } #poster .site { font-size: 15pt; }
+    @page { size: A4; margin: 0; }
+  }
+</style>
+</head>
+<body>
+<main class="page">
+  <div class="container">
+    <div class="page-head">
+      <h1>推广中心</h1>
+      <p>M07 · 为社区、长者食堂、食养机构、中医数智化产品等场景生成专属二维码与海报；扫码访问会按点位自动统计。</p>
+    </div>
+
+    <div class="promo">
+      <div>
+        <div class="card">
+          <h3>生成推广海报</h3>
+          <div id="file-warn"></div>
+          <div class="form-grid">
+            <label class="field full"><span>系统访问地址（部署后的正式网址）</span><input type="url" id="base" placeholder="https://（正式域名）/"></label>
+            <label class="field"><span>场景类别</span><select id="scene"><option>社区</option><option>长者食堂</option><option>食养机构</option><option>中医数智化产品</option></select></label>
+            <label class="field"><span>点位名称</span><input type="text" id="point" placeholder="如：××街道社区卫生服务中心"></label>
+            <label class="field"><span>扫码进入</span><select id="entry">
+              <option value="m02-user/index.html">用户端首页</option>
+              <option value="m02-user/constitution.html">体质测评</option>
+              <option value="m02-user/recommend.html">今日三餐推荐</option>
+              <option value="m07-promotion/kiosk.html">触摸屏模式</option>
+            </select></label>
+            <label class="field"><span>部署形式</span><select id="form"><option>扫码使用</option><option>触摸屏终端</option><option>微信小程序/H5</option><option>系统接口对接</option></select></label>
+            <label class="field full"><span>生成的链接</span><input type="text" id="url" readonly></label>
+          </div>
+          <div class="row tight mt-2">
+            <button class="btn primary" id="save">保存为推广点位</button>
+            <button class="btn" id="print">打印海报</button>
+            <button class="btn" id="dl">下载二维码（SVG）</button>
+            <button class="btn" id="copy">复制链接</button>
+          </div>
+        </div>
+
+        <div class="card mt-2">
+          <div class="card-title"><h3>推广点位</h3><button class="btn sm" id="exp">导出（填入验收表）</button></div>
+          <div id="cover" class="mb-1"></div>
+          <div class="table-wrap"><table class="table"><thead><tr><th>场景</th><th>点位</th><th>形式</th><th class="num">访问</th><th class="num">推荐</th><th>状态</th><th>操作</th></tr></thead><tbody id="tb"></tbody></table></div>
+          <p class="muted mt-1 mb-0" style="font-size:12px">访问、推荐次数按二维码中的来源参数统计；纯前端版只统计本机记录，二期上线后为全部用户数据。</p>
+        </div>
+      </div>
+
+      <div>
+        <div class="poster" id="poster">
+          <div class="seal" id="p-term"></div>
+          <div class="t1">经典古籍 · 药食同源</div>
+          <div class="t2">三餐四季<br>经典药膳</div>
+          <div class="t3">测体质 · 看节气 · 吃对饭</div>
+          <div class="qr" id="p-qr"></div>
+          <div class="steps"><div><b>1</b>微信扫一扫</div><div><b>2</b>完成体质测评</div><div><b>3</b>获取三餐药膳</div></div>
+          <div class="foot"><div class="site" id="p-site">推广点位</div>上海市第七人民医院 · 中医经典药膳推荐系统</div>
+        </div>
+        <p class="center muted mt-1" style="font-size:12px">A4 竖版海报预览</p>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script src="../assets/js/core.js"></script>
+<script src="../assets/js/solar-terms.js"></script>
+<script src="../assets/js/db.js"></script>
+<script src="../assets/lib/qrcode.js"></script>
+<script>
+(function () {
+  'use strict';
+  var U = YS.util, esc = U.esc, S = YS.storage;
+  YS.topbar({ title: 'M07 推广与应用', sub: '推广中心' });
+  var base = document.getElementById('base');
+  var isHttp = /^https?:/.test(location.protocol);
+  base.value = S.get('promo_base', '') || (isHttp ? YS.root : '');
+  if (!isHttp) document.getElementById('file-warn').innerHTML = '<div class="notice warn mb-2" style="font-size:13px">当前为本地文件打开，手机无法扫码访问。请部署到服务器后，在下方填写正式网址再生成二维码。</div>';
+  document.getElementById('p-term').innerHTML = YS.solar.termOf(new Date()).split('').join('<br>');
+
+  function code() { return document.getElementById('scene').value + '-' + (document.getElementById('point').value.trim() || '未命名点位'); }
+  function link() {
+    var b = base.value.trim() || 'https://（正式域名）/';
+    if (!/\/$/.test(b)) b += '/';
+    return b + document.getElementById('entry').value + '?src=' + encodeURIComponent(code());
+  }
+  function update() {
+    var url = link();
+    document.getElementById('url').value = url;
+    document.getElementById('p-qr').innerHTML = YS.ui.qrSvg(url, 4);
+    document.getElementById('p-site').textContent = document.getElementById('point').value.trim() || '（点位名称）';
+  }
+  ['base', 'scene', 'point', 'entry'].forEach(function (id) { document.getElementById(id).addEventListener('input', update); document.getElementById(id).addEventListener('change', update); });
+  base.addEventListener('change', function () { S.set('promo_base', base.value.trim()); });
+
+  document.getElementById('print').onclick = function () { window.print(); };
+  document.getElementById('dl').onclick = function () { U.download('二维码_' + code() + '.svg', document.getElementById('p-qr').innerHTML, 'image/svg+xml'); };
+  document.getElementById('copy').onclick = function () {
+    var i = document.getElementById('url'); i.select();
+    try { document.execCommand('copy'); YS.ui.toast('已复制', 'ok'); } catch (e) { YS.ui.toast('请手动复制'); }
+  };
+
+  // ---------- 推广点位 ----------
+  function points() { return S.get('promo_points', []); }
+  function stats() {
+    var v = {}, r = {};
+    S.get('visits', []).forEach(function (x) { if (x.src) v[x.src] = (v[x.src] || 0) + 1; });
+    S.get('c_reclogs', []).forEach(function (x) { if (x.src) r[x.src] = (r[x.src] || 0) + 1; });
+    return { v: v, r: r };
+  }
+  var CAT = { 社区: '社区', 长者食堂: '长者食堂', 食养机构: '食养机构/中医数智化产品', 中医数智化产品: '食养机构/中医数智化产品' };
+  function render() {
+    var list = points(), st = stats();
+    var covered = U.uniq(list.filter(function (p) { return p.status === '已部署'; }).map(function (p) { return CAT[p.scene]; }));
+    document.getElementById('cover').innerHTML = '<div class="notice ' + (covered.length >= 3 ? 'ok' : 'info') + '" style="font-size:13px">已部署场景类别 <b>' + covered.length + ' / 3</b>（社区、长者食堂、食养机构/中医数智化产品）' +
+      (covered.length >= 3 ? ' · 满足验收标准“至少 3 类场景”' : ' · 验收要求至少 3 类') + (covered.length ? '：' + esc(covered.join('、')) : '') + '</div>';
+    document.getElementById('tb').innerHTML = list.map(function (p, i) {
+      return '<tr><td class="nowrap">' + esc(p.scene) + '</td><td>' + esc(p.point) + '</td><td class="nowrap">' + esc(p.form) + '</td><td class="num">' + (st.v[p.code] || 0) + '</td><td class="num">' + (st.r[p.code] || 0) + '</td>' +
+        '<td><select data-st="' + i + '">' + ['计划中', '部署中', '已部署', '已停用'].map(function (s) { return '<option' + (s === p.status ? ' selected' : '') + '>' + s + '</option>'; }).join('') + '</select></td>' +
+        '<td class="actions"><button class="btn sm" data-show="' + i + '">海报</button><button class="btn sm danger" data-del="' + i + '">删除</button></td></tr>';
+    }).join('') || '<tr><td colspan="7" class="empty">尚未添加推广点位</td></tr>';
+  }
+  document.getElementById('save').onclick = function () {
+    var point = document.getElementById('point').value.trim();
+    if (!point) { YS.ui.toast('请填写点位名称', 'err'); return; }
+    var list = points();
+    if (list.some(function (p) { return p.code === code(); })) { YS.ui.toast('该点位已存在'); return; }
+    list.push({ code: code(), scene: document.getElementById('scene').value, point: point, form: document.getElementById('form').value, entry: document.getElementById('entry').value, url: link(), status: '计划中', created: Date.now() });
+    S.set('promo_points', list);
+    YS.ui.toast('已保存', 'ok'); render();
+  };
+  document.getElementById('tb').addEventListener('change', function (e) {
+    var i = e.target.getAttribute('data-st'); if (i === null) return;
+    var list = points(); list[Number(i)].status = e.target.value;
+    if (e.target.value === '已部署' && !list[Number(i)].deployed) list[Number(i)].deployed = Date.now();
+    S.set('promo_points', list); render();
+  });
+  document.getElementById('tb').addEventListener('click', function (e) {
+    var s = e.target.closest('[data-show]'), d = e.target.closest('[data-del]');
+    var list = points();
+    if (s) {
+      var p = list[Number(s.getAttribute('data-show'))];
+      document.getElementById('scene').value = p.scene; document.getElementById('point').value = p.point;
+      document.getElementById('entry').value = p.entry; document.getElementById('form').value = p.form;
+      update(); window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    if (d) {
+      YS.ui.confirm('删除该推广点位？（已产生的访问记录不受影响）', '删除', true).then(function (ok) {
+        if (!ok) return;
+        list.splice(Number(d.getAttribute('data-del')), 1); S.set('promo_points', list); render();
+      });
+    }
+  });
+  document.getElementById('exp').onclick = function () {
+    var st = stats();
+    var rows = [['序号', '场景类别', '部署单位/点位名称', '部署形式', '上线日期', '使用数据（访问量/推荐次数）', '部署状态', '入口链接']];
+    points().forEach(function (p, i) { rows.push([i + 1, p.scene, p.point, p.form, p.deployed ? U.fmtDate(p.deployed) : '', (st.v[p.code] || 0) + ' / ' + (st.r[p.code] || 0), p.status, p.url]); });
+    U.download('推广场景记录_' + U.fmtDate() + '.csv', U.csvStringify(rows), 'text/csv');
+  };
+  update(); render();
+})();
+</script>
+</body>
+</html>

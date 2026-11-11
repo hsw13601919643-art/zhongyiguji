@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#2f5d50">
+<title>三餐四季经典药膳</title>
+<link rel="stylesheet" href="../assets/css/base.css">
+<link rel="stylesheet" href="../assets/css/user.css">
+</head>
+<body>
+<main class="u-main">
+  <section class="term-card" id="term"></section>
+
+  <section class="card mt-2" id="con"></section>
+
+  <section class="mt-2">
+    <div class="entry-grid">
+      <a href="recommend.html"><span class="ic">膳</span>今日三餐</a>
+      <a href="recommend.html?mode=season"><span class="ic">季</span>四季方案</a>
+      <a href="constitution.html"><span class="ic a">测</span>体质测评</a>
+      <a href="science.html"><span class="ic a">知</span>药膳科普</a>
+      <a href="favorites.html"><span class="ic">藏</span>我的收藏</a>
+      <a href="../m01-database/index.html"><span class="ic">典</span>经典方库</a>
+    </div>
+  </section>
+
+  <section class="card mt-2" id="today"></section>
+
+  <section class="mt-2" id="news"></section>
+  <div id="disc"></div>
+</main>
+
+<script src="../assets/js/core.js"></script>
+<script src="../assets/js/solar-terms.js"></script>
+<script src="../assets/js/db.js"></script>
+<script src="../m01-database/data/dicts.js"></script>
+<script src="../m01-database/data/yaoshi-106.js"></script>
+<script src="../m01-database/data/recipes.js"></script>
+<script src="../m01-database/model.js"></script>
+<script src="../m04-engine/rules.js"></script>
+<script src="../m04-engine/engine.js"></script>
+<script src="data/contents.js"></script>
+<script src="user.js"></script>
+<script>
+(function () {
+  'use strict';
+  var U = YS.util, esc = U.esc, D = YS.dict;
+  YS.user.init({ title: '三餐四季 · 经典药膳', tab: 'home', page: '首页' });
+
+  var now = new Date(), term = YS.solar.termOf(now), season = YS.solar.seasonOf(term), nx = YS.solar.next(now);
+  document.getElementById('term').innerHTML =
+    '<div class="seal">' + season + '</div>' +
+    '<div class="date">' + U.cnDate(now) + ' ' + U.weekday(now) + ' · 当前节气</div>' +
+    '<div class="term">' + term + '</div>' +
+    '<div class="tip">' + esc(D.termTips[term]) + '</div>' +
+    (nx ? '<div class="date mt-1">距' + nx.name + '还有 ' + nx.days + ' 天</div>' : '') +
+    '<a class="go" href="recommend.html">查看今日药膳推荐 →</a>';
+
+  var p = YS.track.profile();
+  var conEl = document.getElementById('con');
+  if (p.constitution) {
+    var c = D.constitution(p.constitution) || {};
+    conEl.innerHTML = '<div class="card-title"><h3>我的体质：<span style="color:var(--c-primary)">' + esc(p.constitution) + '</span></h3><a class="btn sm" href="constitution.html">重新测评</a></div>' +
+      (p.secondary && p.secondary.length ? '<p class="muted" style="font-size:13px">兼有倾向：' + esc(p.secondary.join('、')) + '</p>' : '') +
+      '<p class="text-2" style="font-size:14px">' + esc(c.feature || '') + '</p><p style="font-size:14px;margin:0"><b>饮食调养：</b>' + esc(c.diet || '') + '</p>' +
+      '<p class="muted" style="font-size:12px;margin:6px 0 0">测评时间：' + (p.testedAt ? U.fmtDate(p.testedAt) : '手动选择') + '</p>';
+  } else {
+    conEl.innerHTML = '<div class="row between"><div><h3 style="margin:0">还不了解自己的体质？</h3><p class="muted mb-0" style="font-size:14px">' + '60 道题，约 5 分钟，按国家标准判定九种体质</p></div>' +
+      '<a class="btn primary" href="constitution.html">开始测评</a></div>';
+  }
+
+  // 今日推荐速览
+  var res = YS.engine.recommend({ constitution: p.constitution || '', term: term, age: p.ageGroup || '', region: p.region || '江南' });
+  document.getElementById('today').innerHTML = '<div class="card-title"><h3>今日三餐</h3><a href="recommend.html" class="btn ghost sm">完整方案 ›</a></div>' +
+    '<div class="grid grid-3">' + ['早', '午', '晚'].map(function (m) {
+      var x = res.meals[m];
+      return '<div><div class="muted" style="font-size:13px">' + D.mealNames[m] + '</div>' + (x.pick
+        ? '<a class="serif" style="font-size:18px;font-weight:700;color:var(--c-text)" href="detail.html?id=' + encodeURIComponent(x.pick.recipe.id) + '">' + esc(x.pick.recipe.name) + '</a><div class="muted" style="font-size:13px">' + esc(x.pick.recipe.efficacy) + '</div>'
+        : '<span class="muted">暂无</span>') + '</div>';
+    }).join('') + '</div>' +
+    (p.constitution ? '' : '<p class="muted mt-1 mb-0" style="font-size:13px">完成体质测评后，推荐将更贴合您的体质。</p>');
+
+  // 科普
+  var news = YS.db.list('contents').filter(function (x) { return x.status === 'published'; }).slice(0, 3);
+  document.getElementById('news').innerHTML = '<div class="row between mb-1"><h3 style="margin:0">药膳科普</h3><a href="science.html" class="btn ghost sm">更多 ›</a></div>' +
+    news.map(function (n) {
+      return '<a class="card" style="display:block;margin-bottom:8px;color:var(--c-text)" href="science.html?id=' + encodeURIComponent(n.id) + '"><span class="badge accent">' + esc(n.category) + '</span> <b>' + esc(n.title) + '</b><div class="muted" style="font-size:13px">' + esc(n.summary) + '</div></a>';
+    }).join('');
+  document.getElementById('disc').innerHTML = YS.user.disclaimer();
+})();
+</script>
+</body>
+</html>

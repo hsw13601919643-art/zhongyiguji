@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>验收导航</title>
+<link rel="stylesheet" href="../assets/css/base.css">
+<style>
+  .filters { display: grid; grid-template-columns: 1.2fr repeat(4, 1fr) 1.4fr; gap: 10px; align-items: end; }
+  @media (max-width: 900px) { .filters { grid-template-columns: 1fr 1fr; } }
+  .mod-h { display: flex; align-items: baseline; gap: 10px; margin: 26px 0 8px; }
+  .mod-h h2 { margin: 0; font-size: 18px; }
+  .mod-h .code { color: var(--c-accent); font-weight: 700; }
+  .acc td { font-size: 14px; }
+  .acc .std { color: var(--c-text-2); font-size: 13px; white-space: pre-line; }
+  .acc .go a { display: inline-block; margin: 0 6px 4px 0; font-size: 13px; }
+  .acc select { min-width: 96px; }
+  .acc input { min-width: 140px; }
+  .acc tr.r-通过 td { background: #f3faf5; }
+  .acc tr.r-不通过 td { background: #fdf2f1; }
+  .acc tr.r-部分通过 td { background: #fdf8ec; }
+  .acc tr.r-不适用 td { color: var(--c-text-3); }
+  .lv-star { color: var(--c-danger); font-weight: 700; }
+  @media (max-width: 760px) {
+    .acc thead { display: none; }
+    .acc tr { display: block; border-bottom: 1px solid var(--c-border); padding: 8px 0; }
+    .acc td { display: block; border: 0; padding: 4px 12px; }
+  }
+</style>
+</head>
+<body>
+<main class="page">
+  <div class="container">
+    <div class="page-head row between">
+      <div>
+        <h1>验收导航</h1>
+        <p>按《项目模块验收表》逐条列出 65 个检查项。点击“前往”打开对应功能或文档，记录验收结果后可导出，粘贴到验收表。</p>
+      </div>
+      <div class="row tight no-print">
+        <a class="btn" id="xlsx" href="经典药膳推荐系统_项目模块验收表.xlsx" download>下载验收表（Excel）</a>
+        <button class="btn primary" id="exp">导出验收记录（CSV）</button>
+      </div>
+    </div>
+
+    <div class="grid grid-4 mb-2" id="kpi"></div>
+    <div class="grid grid-2 mb-2">
+      <div class="card"><div class="card-title"><h3>各模块通过情况</h3><span class="muted" style="font-size:12px">通过数 / 检查项数（不含“不适用”）</span></div><div id="chart"></div></div>
+      <div class="card">
+        <h3>配套测试与记录</h3>
+        <ul style="margin:0;padding-left:18px;line-height:2">
+          <li><a href="../m04-engine/index.html" target="_blank">推荐覆盖测试（43 个用例）</a> → 导出 CSV，对应验收表《推荐覆盖测试》</li>
+          <li><a href="../m07-promotion/index.html" target="_blank">推广中心</a> → 导出 CSV，对应验收表《推广场景记录》</li>
+          <li><a href="../m01-database/index.html#fields" target="_blank">字段说明</a>，对应验收表《数据库字段核验》</li>
+          <li><a id="doc-list" target="_blank">项目文档</a>，对应验收表《交付物清单》</li>
+        </ul>
+        <div class="notice info mt-1" style="font-size:13px">验收结果保存在当前浏览器中。纯前端版功能中标注“二期”的部分（服务器部署、小程序、服务端权限等）请按验收表的验收阶段在二期上线后验收。</div>
+      </div>
+    </div>
+
+    <div class="card no-print">
+      <div class="filters">
+        <label class="field"><span>验收人</span><input type="text" id="who" placeholder="姓名"></label>
+        <label class="field"><span>验收阶段</span><select id="f-stage"><option value="">全部</option><option>初验</option><option>试运行</option><option>终验</option></select></label>
+        <label class="field"><span>重要程度</span><select id="f-level"><option value="">全部</option><option>★考核项</option><option>必选</option><option>建议</option></select></label>
+        <label class="field"><span>验收结果</span><select id="f-res"><option value="">全部</option><option value="待验收">待验收</option><option>通过</option><option>部分通过</option><option>不通过</option><option>不适用</option></select></label>
+        <label class="field"><span>模块</span><select id="f-mod"><option value="">全部</option></select></label>
+        <label class="field"><span>搜索</span><input type="search" id="f-q" placeholder="编号、功能点、标准…"></label>
+      </div>
+    </div>
+
+    <div id="list"></div>
+    <p class="mt-3 no-print"><button class="btn sm danger" id="reset">清空全部验收记录</button></p>
+  </div>
+</main>
+
+<script src="../assets/js/core.js"></script>
+<script src="../assets/js/charts.js"></script>
+<script src="../assets/js/markdown.js"></script>
+<script src="items.js"></script>
+<script>
+(function () {
+  'use strict';
+  var U = YS.util, esc = U.esc, S = YS.storage, A = YS.acceptance;
+  YS.topbar({ title: '验收导航', sub: 'PDZY-2026-0315 项目模块验收' });
+  document.getElementById('doc-list').href = YS.docUrl('README.md');
+  // 公开部署时可不附带验收表文件：网站访问方式下检查文件是否存在，不存在则隐藏下载按钮
+  var xl = document.getElementById('xlsx');
+  if (/^https?:/.test(location.protocol) && window.fetch) {
+    fetch(xl.href, { method: 'HEAD' }).then(function (r) { if (!r.ok) xl.classList.add('hidden'); }, function () { xl.classList.add('hidden'); });
+  }
+  var RES = ['通过', '部分通过', '不通过', '不适用'];
+  function rec() { return S.get('acceptance', {}); }
+  function setRec(id, patch) {
+    var all = rec(), r = all[id] || {};
+    Object.keys(patch).forEach(function (k) { r[k] = patch[k]; });
+    r.by = document.getElementById('who').value.trim() || r.by || '';
+    r.time = Date.now();
+    all[id] = r; S.set('acceptance', all);
+  }
+  var who = document.getElementById('who');
+  who.value = S.get('acceptance_who', '');
+  who.onchange = function () { S.set('acceptance_who', who.value.trim()); };
+  A.modules.forEach(function (m) { var o = document.createElement('option'); o.value = m.code; o.textContent = m.code + ' ' + m.name; document.getElementById('f-mod').appendChild(o); });
+
+  function link(l) {
+    var url = /\.md$/.test(l.path) ? YS.docUrl(l.path) : YS.url(l.path);
+    return '<a href="' + esc(url) + '" target="_blank">' + esc(l.text) + ' ↗</a>';
+  }
+
+  function summary() {
+    var r = rec(), c = { 通过: 0, 部分通过: 0, 不通过: 0, 不适用: 0 };
+    A.items.forEach(function (it) { var x = (r[it.id] || {}).result; if (c[x] !== undefined) c[x]++; });
+    var pending = A.items.length - c.通过 - c.部分通过 - c.不通过 - c.不适用;
+    var key = A.items.filter(function (it) { return it.level === '★考核项'; });
+    var keyPass = key.filter(function (it) { return (r[it.id] || {}).result === '通过'; }).length;
+    document.getElementById('kpi').innerHTML = [
+      ['检查项', A.items.length, '待验收 ' + pending], ['通过', c.通过, '部分通过 ' + c.部分通过 + ' · 不适用 ' + c.不适用],
+      ['不通过', c.不通过, c.不通过 ? '请登记到验收表《问题整改跟踪》' : '—'], ['★ 考核项通过', keyPass + ' / ' + key.length, '须全部通过']
+    ].map(function (k) { return '<div class="kpi"><div class="label">' + k[0] + '</div><div class="value">' + k[1] + '</div><div class="sub">' + k[2] + '</div></div>'; }).join('');
+    YS.charts.hbar(document.getElementById('chart'), A.modules.map(function (m) {
+      var its = A.items.filter(function (it) { return it.module === m.code && (r[it.id] || {}).result !== '不适用'; });
+      var p = its.filter(function (it) { return (r[it.id] || {}).result === '通过'; }).length;
+      return { label: m.code + ' ' + m.name.replace('推荐系统-', ''), value: its.length ? p / its.length * 100 : 0, display: p + ' / ' + its.length };
+    }), { max: 100, label: '各模块通过情况' });
+    Array.prototype.forEach.call(document.querySelectorAll('#chart .ch-row'), function (x) { x.style.gridTemplateColumns = '140px minmax(0,1fr) 60px'; });
+  }
+
+  function render() {
+    var r = rec();
+    var fs = document.getElementById('f-stage').value, fl = document.getElementById('f-level').value, fr = document.getElementById('f-res').value;
+    var fm = document.getElementById('f-mod').value, q = document.getElementById('f-q').value.trim();
+    var html = '';
+    A.modules.forEach(function (m) {
+      var rows = A.items.filter(function (it) {
+        var res = (r[it.id] || {}).result || '待验收';
+        return it.module === m.code && (!fs || it.stage === fs) && (!fl || it.level === fl) && (!fr || res === fr) && (!fm || it.module === fm) &&
+          (!q || [it.id, it.point, it.sub, it.std, it.desc].join(' ').indexOf(q) >= 0);
+      });
+      if (!rows.length) return;
+      html += '<div class="mod-h"><span class="code">' + m.code + '</span><h2>' + esc(m.name) + '</h2><span class="muted" style="font-size:13px">' + rows.length + ' 项</span></div>' +
+        '<div class="table-wrap"><table class="table acc"><thead><tr><th>编号</th><th>功能点</th><th>验收标准</th><th>阶段 / 程度</th><th>前往验收</th><th>结果</th><th>证据 / 备注</th></tr></thead><tbody>' +
+        rows.map(function (it) {
+          var x = r[it.id] || {};
+          return '<tr class="r-' + esc(x.result || '') + '"><td class="nowrap"><b>' + it.id + '</b></td>' +
+            '<td><b>' + esc(it.point) + '</b><div class="muted" style="font-size:12px">' + esc(it.sub) + ' · ' + esc(it.method) + ' · 方案' + esc(it.ref) + '</div></td>' +
+            '<td class="std">' + esc(it.std) + '</td>' +
+            '<td class="nowrap"><span class="badge">' + esc(it.stage) + '</span><br><span class="' + (it.level === '★考核项' ? 'lv-star' : 'muted') + '" style="font-size:12px">' + esc(it.level) + '</span></td>' +
+            '<td class="go">' + it.links.map(link).join('') + '</td>' +
+            '<td><select data-id="' + it.id + '" data-k="result"><option value="">待验收</option>' + RES.map(function (v) { return '<option' + (x.result === v ? ' selected' : '') + '>' + v + '</option>'; }).join('') + '</select>' +
+            (x.time ? '<div class="muted" style="font-size:11px">' + esc(x.by || '') + ' ' + U.fmtDate(x.time) + '</div>' : '') + '</td>' +
+            '<td><input type="text" data-id="' + it.id + '" data-k="note" value="' + esc(x.note || '') + '" placeholder="截图编号、问题说明…"></td></tr>';
+        }).join('') + '</tbody></table></div>';
+    });
+    document.getElementById('list').innerHTML = html || '<div class="card empty mt-2">没有符合条件的检查项</div>';
+    summary();
+  }
+  document.getElementById('list').addEventListener('change', function (e) {
+    var id = e.target.getAttribute('data-id'); if (!id) return;
+    var p = {}; p[e.target.getAttribute('data-k')] = e.target.value;
+    setRec(id, p);
+    if (e.target.getAttribute('data-k') === 'result') render(); else summary();
+  });
+  ['f-stage', 'f-level', 'f-res', 'f-mod'].forEach(function (id) { document.getElementById(id).onchange = render; });
+  document.getElementById('f-q').oninput = U.debounce(render, 150);
+  document.getElementById('exp').onclick = function () {
+    var r = rec();
+    var rows = [['序号', '功能编号', '一级模块', '功能点', '验收阶段', '重要程度', '验收结果', '验收证据/记录', '验收人', '验收日期']];
+    A.items.forEach(function (it, i) { var x = r[it.id] || {}; rows.push([i + 1, it.id, it.moduleName, it.point, it.stage, it.level, x.result || '', x.note || '', x.by || '', x.time ? U.fmtDate(x.time) : '']); });
+    U.download('验收记录_' + U.fmtDate() + '.csv', U.csvStringify(rows), 'text/csv');
+  };
+  document.getElementById('reset').onclick = function () {
+    YS.ui.confirm('将清空本浏览器中记录的全部验收结果与备注，确定吗？（建议先导出）', '清空', true).then(function (ok) { if (ok) { S.remove('acceptance'); render(); } });
+  };
+  render();
+})();
+</script>
+</body>
+</html>

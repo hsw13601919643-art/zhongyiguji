@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>推荐规则配置</title>
+<link rel="stylesheet" href="../assets/css/base.css">
+<link rel="stylesheet" href="../assets/css/admin.css">
+<style>
+  .chips.terms .chip { min-height: 24px; padding: 1px 8px; font-size: 12px; }
+  .pv-form { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)) auto; gap: 8px; align-items: end; }
+  @media (max-width: 900px) { .pv-form { grid-template-columns: 1fr 1fr; } }
+  .switch { width: 18px; height: 18px; cursor: pointer; }
+</style>
+</head>
+<body>
+<div id="adm-content" class="hidden">
+  <div class="grid grid-2 mb-2">
+    <div class="card">
+      <h3>推荐设置</h3>
+      <div class="form-grid">
+        <label class="field"><span>含目录外药材的方剂</span><select id="s-mode"><option value="exclude">过滤，不推荐（默认）</option><option value="flag">仍参与推荐，仅标注</option></select></label>
+        <label class="field"><span>每餐备选数量</span><select id="s-alt"><option>1</option><option>2</option><option>3</option></select></label>
+      </div>
+      <button class="btn primary mt-2" id="s-save">保存设置</button>
+    </div>
+    <div class="card">
+      <h3>规则预览</h3>
+      <div class="pv-form">
+        <label class="field"><span>体质</span><select id="p-c"><option value="">不限</option></select></label>
+        <label class="field"><span>节气</span><select id="p-t"></select></label>
+        <label class="field"><span>脏腑</span><select id="p-o"><option value="">不限</option></select></label>
+        <label class="field"><span>年龄</span><select id="p-a"><option value="">不限</option></select></label>
+        <label class="field"><span>地域</span><select id="p-r"></select></label>
+        <button class="btn" id="p-run">试算</button>
+      </div>
+      <div id="p-out" class="mt-1" style="font-size:14px"></div>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <select id="fg"><option value="">全部分组</option></select>
+    <span class="spacer"></span>
+    <button class="btn primary" id="add">＋ 新增规则</button>
+    <button class="btn" id="reset">恢复默认规则</button>
+    <a class="btn" href="../m04-engine/index.html">运行覆盖测试</a>
+  </div>
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th>启用</th><th>编号</th><th>分组</th><th>名称</th><th>触发条件</th><th>偏好 / 规避</th><th class="num">权重</th><th>依据</th><th>操作</th></tr></thead>
+    <tbody id="tb"></tbody>
+  </table></div>
+  <p class="muted mt-2" style="font-size:13px">规则说明：触发条件全部满足时生效；方剂命中“偏好”任一项加分，命中“规避”任一项扣分（分值＝权重）。规则加分合计上限 30 分，不会改变“体质 > 脏腑 > 节气”的优先顺序。修改规则后，建议运行覆盖测试确认结果。</p>
+</div>
+
+<script src="../assets/js/core.js"></script>
+<script src="../assets/js/solar-terms.js"></script>
+<script src="../assets/js/db.js"></script>
+<script src="../m01-database/data/dicts.js"></script>
+<script src="../m01-database/data/yaoshi-106.js"></script>
+<script src="../m01-database/data/recipes.js"></script>
+<script src="../m01-database/model.js"></script>
+<script src="../m04-engine/rules.js"></script>
+<script src="../m04-engine/engine.js"></script>
+<script src="../m06-security/audit.js"></script>
+<script src="../m06-security/auth.js"></script>
+<script src="admin.js"></script>
+<script>
+(function () {
+  'use strict';
+  if (!YS.admin.init({ key: 'rules', title: '推荐规则配置', perm: 'rules.manage' })) return;
+  var U = YS.util, esc = U.esc, D = YS.dict;
+  var GROUPS = ['方案示例', '应体', '应时', '应地', '自定义'];
+  var DIMS_WHEN = [['seasons', '季节', D.seasons], ['terms', '节气', YS.solar.ORDER], ['organs', '脏腑', D.names('organs')], ['constitutions', '体质', D.names('constitutions')], ['ages', '年龄段', D.names('ages')], ['regions', '地域', D.names('regions')]];
+  var DIMS_PREF = [['tags', '功效标签', D.tags], ['tastes', '五味', D.tastes], ['colors', '五色', D.colors], ['natures', '四气', D.natures], ['categories', '膳食类别', D.categories]];
+
+  // ---------- 设置 ----------
+  var st = YS.engineSettings.get();
+  document.getElementById('s-mode').value = st.complianceMode;
+  document.getElementById('s-alt').value = String(st.alternatives);
+  document.getElementById('s-save').onclick = function () {
+    var s = { complianceMode: document.getElementById('s-mode').value, alternatives: Number(document.getElementById('s-alt').value) };
+    YS.engineSettings.set(s);
+    YS.audit.log('修改推荐设置', '推荐设置', '合规处理：' + (s.complianceMode === 'exclude' ? '过滤' : '仅标注') + '；备选数：' + s.alternatives);
+    YS.ui.toast('设置已保存', 'ok');
+  };
+
+  // ---------- 列表 ----------
+  GROUPS.forEach(function (g) { var o = document.createElement('option'); o.value = o.textContent = g; document.getElementById('fg').appendChild(o); });
+  document.getElementById('fg').onchange = render;
+  function spec(s) {
+    if (!s) return '';
+    var parts = [];
+    DIMS_WHEN.concat(DIMS_PREF).concat([['ingredients', '组成']]).forEach(function (d) { if (s[d[0]] && s[d[0]].length) parts.push(d[1] + '：' + s[d[0]].join('/')); });
+    return parts.join('；');
+  }
+  function render() {
+    var g = document.getElementById('fg').value;
+    var rows = YS.db.list('rules').filter(function (r) { return !g || r.group === g; });
+    document.getElementById('tb').innerHTML = rows.map(function (r) {
+      return '<tr' + (r.enabled === false ? ' style="opacity:.55"' : '') + '><td><input type="checkbox" class="switch" data-toggle="' + esc(r.id) + '"' + (r.enabled === false ? '' : ' checked') + ' aria-label="启用"></td>' +
+        '<td><b>' + esc(r.id) + '</b></td><td class="nowrap">' + esc(r.group) + '</td><td>' + esc(r.name) + '</td><td style="font-size:13px">' + esc(spec(r.when) || '始终') + '</td>' +
+        '<td style="font-size:13px">' + (spec(r.prefer) ? '<span class="badge green">宜</span> ' + esc(spec(r.prefer)) : '') + (spec(r.avoid) ? '<br><span class="badge red">忌</span> ' + esc(spec(r.avoid)) : '') + '</td>' +
+        '<td class="num">' + r.weight + '</td><td style="font-size:12px" class="muted">' + esc(r.basis || '') + '</td>' +
+        '<td class="actions"><button class="btn sm" data-edit="' + esc(r.id) + '">编辑</button><button class="btn sm danger" data-del="' + esc(r.id) + '">删除</button></td></tr>';
+    }).join('') || '<tr><td colspan="9" class="empty">暂无规则</td></tr>';
+  }
+  function saveRules(list, action, target, detail) {
+    YS.db.saveAll('rules', list);
+    YS.audit.log(action, target, detail || '');
+    render();
+  }
+
+  document.getElementById('tb').addEventListener('change', function (e) {
+    var id = e.target.getAttribute('data-toggle'); if (!id) return;
+    var list = YS.db.list('rules');
+    list.forEach(function (r) { if (r.id === id) r.enabled = e.target.checked; });
+    var r = list.filter(function (x) { return x.id === id; })[0];
+    saveRules(list, e.target.checked ? '启用规则' : '停用规则', id + ' ' + r.name);
+  });
+  document.getElementById('tb').addEventListener('click', function (e) {
+    var ed = e.target.closest('[data-edit]'), del = e.target.closest('[data-del]');
+    if (ed) openEdit(YS.db.get('rules', ed.getAttribute('data-edit')));
+    if (del) {
+      var r = YS.db.get('rules', del.getAttribute('data-del'));
+      YS.ui.confirm('确定删除规则 ' + r.id + '“' + r.name + '”吗？', '删除', true).then(function (ok) {
+        if (ok) saveRules(YS.db.list('rules').filter(function (x) { return x.id !== r.id; }), '删除规则', r.id + ' ' + r.name);
+      });
+    }
+  });
+  document.getElementById('add').onclick = function () { openEdit(null); };
+  document.getElementById('reset').onclick = function () {
+    YS.ui.confirm('将恢复为系统默认的 ' + YS.seed.rules.length + ' 条规则，当前修改会丢失（可先到“数据备份”导出），确定吗？', '恢复', true).then(function (ok) {
+      if (!ok) return;
+      YS.db.saveAll('rules', U.clone(YS.seed.rules));
+      YS.audit.log('恢复默认规则', '推荐规则', '共 ' + YS.seed.rules.length + ' 条');
+      YS.ui.toast('已恢复默认规则', 'ok'); render();
+    });
+  };
+
+  // ---------- 编辑 ----------
+  function openEdit(old) {
+    var r = old ? U.clone(old) : { id: '', group: '自定义', name: '', enabled: true, when: {}, prefer: {}, avoid: {}, weight: 5, basis: '' };
+    var chips = {};
+    function block(prefix, dims, obj) {
+      return dims.map(function (d) { return '<div class="field' + (d[0] === 'tags' || d[0] === 'terms' ? ' full' : '') + '"><span class="field-label">' + d[1] + '</span><div id="' + prefix + '-' + d[0] + '" class="chips sm' + (d[0] === 'terms' ? ' terms' : '') + '"></div></div>'; }).join('') +
+        (prefix !== 'w' ? '<label class="field full"><span>组成含（多个用“、”分隔）</span><input type="text" id="' + prefix + '-ingredients" value="' + esc((obj.ingredients || []).join('、')) + '"></label>' : '');
+    }
+    YS.ui.modal({
+      title: old ? '编辑规则 ' + r.id : '新增规则', wide: true, sticky: true,
+      html: '<div id="rerr"></div><div class="form-sec"><h4>基本信息</h4><div class="form-grid">' +
+        '<label class="field"><span>名称<b class="req">*</b></span><input type="text" id="r-name" value="' + esc(r.name) + '"></label>' +
+        '<label class="field"><span>分组</span><select id="r-group">' + GROUPS.map(function (g) { return '<option' + (g === r.group ? ' selected' : '') + '>' + g + '</option>'; }).join('') + '</select></label>' +
+        '<label class="field"><span>权重（1—30）</span><input type="number" id="r-weight" min="1" max="30" value="' + esc(r.weight) + '"></label>' +
+        '<label class="field"><span>依据</span><input type="text" id="r-basis" value="' + esc(r.basis) + '"></label></div></div>' +
+        '<div class="form-sec"><h4>触发条件（不选表示不限）</h4><div class="form-grid">' + block('w', DIMS_WHEN, r.when) + '</div></div>' +
+        '<div class="form-sec"><h4>偏好（命中任一项加分）</h4><div class="form-grid">' + block('p', DIMS_PREF, r.prefer) + '</div></div>' +
+        '<div class="form-sec"><h4>规避（命中任一项扣分）</h4><div class="form-grid">' + block('v', DIMS_PREF, r.avoid) + '</div></div>',
+      onOpen: function (body) {
+        [['w', DIMS_WHEN, r.when], ['p', DIMS_PREF, r.prefer], ['v', DIMS_PREF, r.avoid]].forEach(function (g) {
+          g[1].forEach(function (d) { chips[g[0] + d[0]] = YS.ui.chips(body.querySelector('#' + g[0] + '-' + d[0]), d[2], (g[2] || {})[d[0]] || [], true); });
+        });
+      },
+      actions: [{ text: '取消' }, { text: '保存', cls: 'primary', onClick: function (c, body) {
+        var name = body.querySelector('#r-name').value.trim(), w = Number(body.querySelector('#r-weight').value);
+        var err = [];
+        if (!name) err.push('请填写名称');
+        if (!(w >= 1 && w <= 30)) err.push('权重须在 1—30 之间');
+        function pick(prefix, dims) {
+          var o = {};
+          dims.forEach(function (d) { var v = chips[prefix + d[0]].get(); if (v.length) o[d[0]] = v; });
+          var ing = body.querySelector('#' + prefix + '-ingredients');
+          if (ing && ing.value.trim()) o.ingredients = U.splitMulti(ing.value);
+          return o;
+        }
+        var nr = { id: r.id, group: body.querySelector('#r-group').value, name: name, enabled: r.enabled !== false, when: pick('w', DIMS_WHEN), prefer: pick('p', DIMS_PREF), avoid: pick('v', DIMS_PREF), weight: w, basis: body.querySelector('#r-basis').value.trim() };
+        if (!Object.keys(nr.prefer).length && !Object.keys(nr.avoid).length) err.push('“偏好”和“规避”至少设置一项');
+        if (err.length) { body.querySelector('#rerr').innerHTML = '<div class="notice danger mb-2">' + err.map(esc).join('<br>') + '</div>'; return false; }
+        var list = YS.db.list('rules');
+        if (!nr.id) {
+          var max = 0; list.forEach(function (x) { var n = parseInt(String(x.id).replace(/\D/g, ''), 10); if (n > max) max = n; });
+          nr.id = 'R' + Math.max(40, max + 1);
+          list.push(nr);
+        } else list = list.map(function (x) { return x.id === nr.id ? nr : x; });
+        saveRules(list, old ? '编辑规则' : '新增规则', nr.id + ' ' + nr.name, spec(nr.when) + ' → ' + spec(nr.prefer));
+        YS.ui.toast('规则已保存', 'ok');
+      } }]
+    });
+  }
+
+  // ---------- 预览 ----------
+  function opts(id, vals, sel) { var s = document.getElementById(id); vals.forEach(function (v) { var o = document.createElement('option'); o.value = v.value || v; o.textContent = v.text || v; if (o.value === sel) o.selected = true; s.appendChild(o); }); }
+  var cur = YS.solar.termOf(new Date());
+  opts('p-c', D.names('constitutions'));
+  opts('p-t', YS.solar.ORDER.map(function (t) { return { value: t, text: t + (t === cur ? '（当前）' : '') }; }), cur);
+  opts('p-o', D.names('organs'));
+  opts('p-a', D.names('ages'));
+  opts('p-r', D.regions.map(function (x) { return { value: x.name, text: x.text }; }), '江南');
+  document.getElementById('p-run').onclick = function () {
+    var res = YS.engine.recommend({ constitution: document.getElementById('p-c').value, term: document.getElementById('p-t').value, organ: document.getElementById('p-o').value, age: document.getElementById('p-a').value, region: document.getElementById('p-r').value });
+    document.getElementById('p-out').innerHTML = ['早', '午', '晚'].map(function (m) {
+      var x = res.meals[m];
+      return '<div><b>' + D.mealNames[m] + '：</b>' + (x.pick ? esc(x.pick.recipe.name) + ' <span class="muted">（' + esc(x.pick.rules.map(function (k) { return k.id + (k.weight > 0 ? '+' : '') + k.weight; }).join('、') || '无规则加分') + '）</span>' : '无') + '</div>';
+    }).join('') + '<div class="muted mt-1">触发规则：' + esc(res.appliedRules.map(function (r) { return r.id; }).join('、') || '无') + '</div>';
+  };
+
+  render();
+})();
+</script>
+</body>
+</html>

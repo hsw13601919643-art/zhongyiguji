@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>用户与推荐记录</title>
+<link rel="stylesheet" href="../assets/css/base.css">
+<link rel="stylesheet" href="../assets/css/admin.css">
+</head>
+<body>
+<div id="adm-content" class="hidden">
+  <div class="notice info mb-2" id="note"></div>
+  <div class="grid grid-4 mb-2" id="kpi"></div>
+  <div class="grid grid-2 mb-2">
+    <div class="card"><div class="card-title"><h3>用户体质分布</h3><span class="muted" style="font-size:12px">已测评或已选择体质的用户</span></div><div id="c-con"></div></div>
+    <div class="card"><div class="card-title"><h3>用户年龄段分布</h3></div><div id="c-age"></div></div>
+  </div>
+
+  <div class="tabs"><button class="tab on" data-t="users">用户列表</button><button class="tab" data-t="recs">推荐记录</button></div>
+  <section data-pane="users">
+    <div class="toolbar"><select id="u-con"><option value="">全部体质</option></select><span class="spacer"></span></div>
+    <div class="table-wrap"><table class="table"><thead><tr><th>匿名编号</th><th>体质</th><th>性别</th><th>年龄段</th><th>地域</th><th>来源</th><th>首次访问</th><th>最近访问</th><th class="num">推荐次数</th></tr></thead><tbody id="u-body"></tbody></table></div>
+    <div id="u-pager"></div>
+  </section>
+  <section data-pane="recs" class="hidden">
+    <div class="toolbar">
+      <select id="r-range"><option value="7">近 7 天</option><option value="30" selected>近 30 天</option><option value="0">全部</option></select>
+      <select id="r-con"><option value="">全部体质</option></select>
+      <input type="search" id="r-q" placeholder="按方名搜索…">
+      <span class="spacer"></span><button class="btn" id="r-exp">导出 CSV</button>
+    </div>
+    <div class="table-wrap"><table class="table"><thead><tr><th>时间</th><th>用户</th><th>体质</th><th>节气</th><th>脏腑</th><th>年龄段</th><th>推荐结果</th><th class="num">耗时(毫秒)</th><th>来源</th></tr></thead><tbody id="r-body"></tbody></table></div>
+    <div id="r-pager"></div>
+  </section>
+</div>
+
+<script src="../assets/js/core.js"></script>
+<script src="../assets/js/solar-terms.js"></script>
+<script src="../assets/js/db.js"></script>
+<script src="../assets/js/charts.js"></script>
+<script src="../m01-database/data/dicts.js"></script>
+<script src="../m01-database/data/yaoshi-106.js"></script>
+<script src="../m01-database/data/recipes.js"></script>
+<script src="../m01-database/model.js"></script>
+<script src="../m06-security/audit.js"></script>
+<script src="../m06-security/auth.js"></script>
+<script src="admin.js"></script>
+<script>
+(function () {
+  'use strict';
+  if (!YS.admin.init({ key: 'users', title: '用户与推荐记录', perm: 'users.view' })) return;
+  var U = YS.util, esc = U.esc, D = YS.dict;
+  var users = YS.storage.get('c_users', []), recs = YS.storage.get('c_reclogs', []);
+  var demo = users.some(function (u) { return u.demo; });
+  document.getElementById('note').innerHTML = '用户为匿名设备编号，不含姓名、手机号等身份信息。纯前端版只能看到本机产生的数据' + (demo ? '，<b>当前包含演示数据</b>（可在“数据统计”页清除）' : '；如需查看统计效果，可在“数据统计”页生成演示数据') + '。';
+
+  var recCount = {};
+  recs.forEach(function (r) { recCount[r.uid] = (recCount[r.uid] || 0) + 1; });
+  var since7 = YS.admin.rangeStart(7);
+  document.getElementById('kpi').innerHTML = [
+    ['用户数', users.length, '匿名设备'], ['已测评/选择体质', users.filter(function (u) { return u.constitution; }).length, ''],
+    ['推荐记录', recs.length, '近 7 天 ' + recs.filter(function (r) { return r.t >= since7; }).length + ' 条'],
+    ['本周新增用户', users.filter(function (u) { return u.firstSeen >= since7; }).length, '']
+  ].map(function (k) { return '<div class="kpi"><div class="label">' + k[0] + '</div><div class="value">' + k[1] + '</div><div class="sub">' + k[2] + '</div></div>'; }).join('');
+
+  function dist(key, names) {
+    var c = {}; users.forEach(function (u) { if (u[key]) c[u[key]] = (c[u[key]] || 0) + 1; });
+    var total = Object.keys(c).reduce(function (s, k) { return s + c[k]; }, 0) || 1;
+    return names.map(function (n) { return { label: n, value: c[n] || 0, display: (c[n] || 0) + ' 人', note: Math.round((c[n] || 0) / total * 100) + '%' }; });
+  }
+  YS.charts.hbar(document.getElementById('c-con'), dist('constitution', D.names('constitutions')), { label: '用户体质分布', emptyText: '暂无用户' });
+  YS.charts.hbar(document.getElementById('c-age'), dist('ageGroup', D.names('ages')), { label: '用户年龄段分布' });
+
+  ['u-con', 'r-con'].forEach(function (id) { D.names('constitutions').forEach(function (n) { var o = document.createElement('option'); o.value = o.textContent = n; document.getElementById(id).appendChild(o); }); });
+  var up = 1, rp = 1, SIZE = 20;
+  function renderUsers() {
+    var c = document.getElementById('u-con').value;
+    var rows = users.filter(function (u) { return !c || u.constitution === c; }).sort(function (a, b) { return (b.lastSeen || 0) - (a.lastSeen || 0); });
+    var slice = rows.slice((up - 1) * SIZE, up * SIZE);
+    document.getElementById('u-body').innerHTML = slice.map(function (u) {
+      return '<tr><td class="nowrap">' + esc(u.id.slice(0, 12)) + (u.demo ? ' <span class="badge amber">演示</span>' : '') + '</td><td>' + esc(u.constitution || '—') + '</td><td>' + esc(u.gender || '—') + '</td><td>' + esc(u.ageGroup || '—') + '</td><td>' + esc(u.region || '—') + '</td>' +
+        '<td>' + esc(u.src || '直接访问') + '</td><td class="nowrap">' + U.fmtDate(u.firstSeen) + '</td><td class="nowrap">' + (u.lastSeen ? U.fmtTime(u.lastSeen) : '—') + '</td><td class="num">' + (recCount[u.id] || 0) + '</td></tr>';
+    }).join('') || '<tr><td colspan="9" class="empty">暂无用户</td></tr>';
+    YS.admin.pager(document.getElementById('u-pager'), rows.length, up, SIZE, function (p) { up = p; renderUsers(); });
+  }
+  function recRows() {
+    var days = Number(document.getElementById('r-range').value), c = document.getElementById('r-con').value, q = document.getElementById('r-q').value.trim();
+    var since = YS.admin.rangeStart(days);
+    return recs.filter(function (r) {
+      return r.t >= since && (!c || r.input.constitution === c) && (!q || r.picks.some(function (p) { return p.name.indexOf(q) >= 0; }));
+    }).sort(function (a, b) { return b.t - a.t; });
+  }
+  function renderRecs() {
+    var rows = recRows();
+    var slice = rows.slice((rp - 1) * SIZE, rp * SIZE);
+    document.getElementById('r-body').innerHTML = slice.map(function (r) {
+      return '<tr><td class="nowrap">' + U.fmtTime(r.t) + '</td><td class="nowrap">' + esc(r.uid.slice(0, 12)) + (r.demo ? ' <span class="badge amber">演示</span>' : '') + '</td><td>' + esc(r.input.constitution || '—') + '</td><td>' + esc(r.input.term) + '</td><td>' + esc(r.input.organ || '—') + '</td><td>' + esc(r.input.age || '—') + '</td>' +
+        '<td style="font-size:13px">' + esc(r.picks.map(function (p) { return D.mealNames[p.meal] + '：' + p.name; }).join('；')) + (r.mode === '四季' ? ' <span class="badge">四季</span>' : '') + '</td><td class="num">' + r.ms + '</td><td>' + esc(r.src || '直接访问') + '</td></tr>';
+    }).join('') || '<tr><td colspan="9" class="empty">暂无推荐记录</td></tr>';
+    YS.admin.pager(document.getElementById('r-pager'), rows.length, rp, SIZE, function (p) { rp = p; renderRecs(); });
+  }
+  document.getElementById('u-con').onchange = function () { up = 1; renderUsers(); };
+  ['r-range', 'r-con'].forEach(function (id) { document.getElementById(id).onchange = function () { rp = 1; renderRecs(); }; });
+  document.getElementById('r-q').oninput = U.debounce(function () { rp = 1; renderRecs(); }, 150);
+  document.getElementById('r-exp').onclick = function () {
+    var rows = [['时间', '用户', '体质', '节气', '脏腑', '年龄段', '地域', '推荐结果', '耗时（毫秒）', '来源', '是否演示数据']];
+    recRows().forEach(function (r) { rows.push([U.fmtTime(r.t), r.uid, r.input.constitution, r.input.term, r.input.organ, r.input.age, r.input.region, r.picks.map(function (p) { return D.mealNames[p.meal] + '：' + p.name; }).join('；'), r.ms, r.src, r.demo ? '是' : '否']); });
+    U.download('推荐记录_' + U.fmtDate() + '.csv', U.csvStringify(rows), 'text/csv');
+    YS.audit.log('导出数据', '推荐记录', '导出 ' + (rows.length - 1) + ' 条');
+  };
+  Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (t) {
+    t.onclick = function () {
+      Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (x) { x.classList.toggle('on', x === t); });
+      Array.prototype.forEach.call(document.querySelectorAll('[data-pane]'), function (p) { p.classList.toggle('hidden', p.getAttribute('data-pane') !== t.getAttribute('data-t')); });
+    };
+  });
+  renderUsers(); renderRecs();
+})();
+</script>
+</body>
+</html>

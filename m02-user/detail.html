@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#2f5d50">
+<title>药膳详情</title>
+<link rel="stylesheet" href="../assets/css/base.css">
+<link rel="stylesheet" href="../assets/css/user.css">
+<style>
+  .u-main { max-width: 760px; }
+  .d-name { font-family: var(--font-serif); font-size: 28px; font-weight: 700; margin: 0; }
+  .d-src { color: var(--c-text-3); font-size: 14px; }
+  .orig { font-family: var(--font-serif); font-size: 16px; line-height: 1.9; padding: 12px 16px; background: var(--c-accent-050); border-left: 3px solid var(--c-accent); border-radius: 0 var(--radius-s) var(--radius-s) 0; }
+  .sec h3 { font-size: 15px; color: var(--c-primary); margin: 0 0 6px; }
+  .sec p { margin: 0; font-size: 15px; }
+  .sec + .sec { margin-top: 16px; }
+</style>
+</head>
+<body>
+<main class="u-main" id="app"></main>
+
+<script src="../assets/js/core.js"></script>
+<script src="../assets/js/solar-terms.js"></script>
+<script src="../assets/js/db.js"></script>
+<script src="../assets/lib/qrcode.js"></script>
+<script src="../m01-database/data/dicts.js"></script>
+<script src="../m01-database/data/yaoshi-106.js"></script>
+<script src="../m01-database/data/recipes.js"></script>
+<script src="../m01-database/model.js"></script>
+<script src="user.js"></script>
+<script>
+(function () {
+  'use strict';
+  var U = YS.util, esc = U.esc, M = YS.model;
+  YS.user.init({ title: '药膳详情', back: true, tab: 'meal', page: '详情' });
+  var app = document.getElementById('app');
+  var id = U.qs('id');
+  var r = YS.db.get('recipes', id);
+  var preview = U.qs('preview') === '1';
+  if (!r || (r.status !== 'published' && !preview)) {
+    app.innerHTML = '<div class="card empty">未找到该药膳方，或该方尚未发布。<br><a href="recommend.html">返回推荐</a></div>';
+    return;
+  }
+  document.title = r.name + ' · 药膳详情';
+  var cp = M.compliance(r);
+  function sec(title, body) { return body ? '<div class="sec"><h3>' + title + '</h3>' + body + '</div>' : ''; }
+  var research = (r.research || []).map(function (x) {
+    return '<li>' + esc(x.title) + (x.journal ? '，《' + esc(x.journal) + '》' : '') + (x.year ? '，' + esc(x.year) : '') + (x.url ? ' <a href="' + esc(x.url) + '" target="_blank" rel="noopener">链接</a>' : '') + '</li>';
+  }).join('');
+  app.innerHTML =
+    (preview && r.status !== 'published' ? '<div class="notice warn mb-2">预览模式：该方当前状态为“' + esc((YS.dict.statuses[r.status] || {}).text || r.status) + '”，用户端不可见。</div>' : '') +
+    '<div class="card">' +
+    '<div class="row between" style="align-items:flex-start"><div><h1 class="d-name">' + esc(r.name) + '</h1>' + (r.alias ? '<div class="muted">又名：' + esc(r.alias) + '</div>' : '') +
+    '<div class="d-src">出自 ' + esc(M.sourceText(r)) + '</div></div>' + YS.user.favButton('recipe', r.id, r.name) + '</div>' +
+    '<div class="tags mt-1">' + M.yaoshiBadge(r) + '<span class="badge">' + esc(r.category) + '</span><span class="badge">性' + esc(r.nature) + (r.tastes.length ? ' · 味' + esc(r.tastes.join('')) : '') + '</span>' + M.sampleBadge(r) + '</div>' +
+    '</div>' +
+    (r.source.original ? '<div class="orig mt-2">' + esc(r.source.original) + '<div class="muted" style="font-size:12px;margin-top:4px;font-family:var(--font-sans)">—— ' + esc(M.sourceText(r)) + '</div></div>' : '') +
+    '<div class="card mt-2">' +
+    sec('组成', M.compHtml(r) + '<p class="muted mt-1" style="font-size:12px">绿色为药食同源目录内药材；' + esc(cp.text) + '</p>') +
+    sec('功效', '<p>' + esc(r.efficacy) + '</p>') +
+    sec('主治', r.indication ? '<p>' + esc(r.indication) + '</p>' : '') +
+    sec('适宜人群', '<p>体质：' + esc(r.constitutions.join('、') || '—') + '<br>年龄：' + esc(r.ages.join('、') || '—') + '<br>调补脏腑：' + esc(r.organs.join('、') || '—') + '<br>适用时令：' + esc(M.seasonText(r)) + '<br>建议餐次：' + esc(r.meals.map(function (m) { return YS.dict.mealNames[m]; }).join('、')) + '</p>') +
+    sec('制作方法', '<p>' + esc(r.method) + '</p>') +
+    sec('注意事项', '<p style="color:var(--c-danger)">' + esc(r.cautions) + '</p>') +
+    sec('现代研究', research ? '<ol style="margin:0;padding-left:18px;font-size:14px">' + research + '</ol>' + (r.researchNote ? '<p class="text-2 mt-1">' + esc(r.researchNote) + '</p>' : '') : '<p class="muted">' + esc(r.researchNote || '暂无') + '</p>') +
+    sec('数据来源', '<p class="muted" style="font-size:13px">' + esc(r.dataSource) + '</p>') +
+    '</div>' +
+    '<div class="grid grid-2 mt-2"><button class="btn lg" id="share">分享给朋友</button><a class="btn primary lg" href="recommend.html">查看我的三餐推荐</a></div>' +
+    YS.user.disclaimer();
+  YS.user.bindFav(app);
+  document.getElementById('share').onclick = function () { YS.ui.share(r.name + ' · 经典药膳', location.href.replace(/&?preview=1/, ''), r.efficacy); };
+})();
+</script>
+</body>
+</html>
